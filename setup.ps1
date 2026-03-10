@@ -37,7 +37,7 @@ if (Test-Path $overridesPath) {
         $raw.PSObject.Properties | ForEach-Object { $overrides[$_.Name.ToLower()] = $_.Value }
         Write-Host "  Loaded overrides from drives-overrides.json" -ForegroundColor Gray
     } catch {
-        Write-Host "  WARNING: Could not parse drives-overrides.json — skipping overrides" -ForegroundColor Yellow
+        Write-Host "  WARNING: Could not parse drives-overrides.json - skipping overrides" -ForegroundColor Yellow
     }
 }
 
