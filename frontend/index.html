@@ -1009,6 +1009,36 @@ async function renderExplorer() {
   }
 }
 
+function groupDrivesByType(drives) {
+  const order = ['Local', 'Network', 'Removable', 'CD-ROM', 'Unknown'];
+  const groups = {};
+  for (const d of drives) {
+    const t = d.drive_type || 'Local';
+    if (!groups[t]) groups[t] = [];
+    groups[t].push(d);
+  }
+  // Return in display order, skipping empty groups
+  return order.filter(t => groups[t]?.length).map(t => ({ type: t, drives: groups[t] }));
+}
+
+function driveTypeLabel(type) {
+  return { Local: 'Local Drives', Network: 'Network Drives', Removable: 'Removable', 'CD-ROM': 'Optical', Unknown: 'Other' }[type] || type;
+}
+
+function renderDriveGroups(drives, cardFn, colWidth = '160px') {
+  if (drives.length === 0) return `<div style="text-align:center;padding:40px;color:var(--text-muted)">No drives found. Run setup.ps1 to mount drives.</div>`;
+  const groups = groupDrivesByType(drives);
+  return `<div style="padding:16px;display:flex;flex-direction:column;gap:20px">` +
+    groups.map(g => `
+      <div>
+        <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-muted);font-weight:600;margin-bottom:10px;padding-left:2px">${driveTypeLabel(g.type)}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(${colWidth},1fr));gap:12px">
+          ${g.drives.map(cardFn).join('')}
+        </div>
+      </div>`).join('') +
+  `</div>`;
+}
+
 async function explorerShowDrives() {
   explorerPath = null;
   const content = document.getElementById('exp-content');
@@ -1021,22 +1051,23 @@ async function explorerShowDrives() {
   try {
     const drives = await api('/drives');
     state.drives = drives;
-    if (drives.length === 0) {
-      content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">No drives found. Run setup.ps1 to mount drives.</div>`;
-      return;
-    }
-    content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:16px;">${drives.map(d => explorerDriveCard(d)).join('')}</div>`;
+    content.innerHTML = renderDriveGroups(drives, explorerDriveCard, '160px');
   } catch (e) {
     content.innerHTML = `<div style="color:var(--red);text-align:center;padding:32px">${escHtml(e.message)}</div>`;
   }
+}
+
+function driveTypeIcon(type) {
+  return { Local: '💾', Network: '🌐', Removable: '💿', 'CD-ROM': '💿', Unknown: '📁' }[type] || '📁';
 }
 
 function explorerDriveCard(d) {
   const usedPct = d.total_bytes > 0 ? Math.round((d.total_bytes - d.free_bytes) / d.total_bytes * 100) : 0;
   return `
     <div class="drive-card ${d.accessible?'':'inaccessible'}" onclick="${d.accessible ? `explorerNavigate('${d.path}')` : ''}">
-      <div style="font-size:1.5rem;margin-bottom:4px;">${d.letter ? '💾' : '📁'}</div>
+      <div style="font-size:1.5rem;margin-bottom:4px;">${driveTypeIcon(d.drive_type)}</div>
       <div style="font-weight:700;font-size:0.9rem;color:var(--text-primary)">${escHtml(d.display)}</div>
+      <div style="font-size:0.72rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.label)}</div>
       <div style="font-size:0.72rem;color:var(--text-muted)">${d.accessible ? `${d.free_display} free / ${d.total_display}` : 'Inaccessible'}</div>
       ${d.accessible && d.total_bytes > 0 ? `
         <div class="usage-bar">
@@ -1760,11 +1791,7 @@ async function browserShowDrives() {
   try {
     const drives = await api('/drives');
     browserDrives = drives;
-    if (drives.length === 0) {
-      content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">No drives found. Run setup.ps1 to mount drives.</div>`;
-      return;
-    }
-    content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:12px;">${drives.map(d => browserDriveCard(d)).join('')}</div>`;
+    content.innerHTML = renderDriveGroups(drives, browserDriveCard, '140px');
   } catch (e) {
     content.innerHTML = `<div style="color:var(--red);text-align:center;padding:32px">${escHtml(e.message)}</div>`;
   }
@@ -1774,8 +1801,9 @@ function browserDriveCard(d) {
   const usedPct = d.total_bytes > 0 ? Math.round((d.total_bytes - d.free_bytes) / d.total_bytes * 100) : 0;
   return `
     <div class="drive-card ${d.accessible ? '' : 'inaccessible'}" onclick="${d.accessible ? `browserNavigate('${d.path}')` : ''}">
-      <div style="font-size:1.3rem">${d.letter ? '💾' : '📁'}</div>
+      <div style="font-size:1.3rem">${driveTypeIcon(d.drive_type)}</div>
       <div style="font-weight:700;font-size:0.88rem">${escHtml(d.display)}</div>
+      <div style="font-size:0.7rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.label)}</div>
       <div style="font-size:0.7rem;color:var(--text-muted)">${d.accessible ? `${d.free_display} free` : 'Inaccessible'}</div>
       ${d.accessible && d.total_bytes > 0 ? `
         <div class="usage-bar"><div class="usage-fill" style="width:${usedPct}%"></div></div>` : ''}

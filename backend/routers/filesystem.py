@@ -7,6 +7,17 @@ from datetime import datetime
 router = APIRouter()
 
 DRIVES_DIR = os.environ.get('DRIVES_DIR', '/mnt/drives')
+DATA_DIR   = os.environ.get('DATA_DIR', '/data')
+
+
+def load_drives_meta() -> dict:
+    """Read drives-meta.json written by setup.ps1. Returns {} if missing."""
+    meta_path = os.path.join(DATA_DIR, 'drives-meta.json')
+    try:
+        with open(meta_path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def container_to_display(path: str) -> str:
@@ -33,12 +44,14 @@ def format_size(n: int) -> str:
 async def list_drives():
     from db import get_setting
     drives = []
+    meta = load_drives_meta()
 
     if os.path.isdir(DRIVES_DIR):
         for entry in sorted(os.scandir(DRIVES_DIR), key=lambda e: e.name):
             if entry.is_dir():
                 path = entry.path
                 letter = entry.name.upper()
+                letter_lower = entry.name.lower()
                 try:
                     st = os.statvfs(path)
                     total = st.f_blocks * st.f_frsize
@@ -48,31 +61,38 @@ async def list_drives():
                     total = free = 0
                     accessible = False
 
+                drive_meta  = meta.get(letter_lower, {})
+                drive_type  = drive_meta.get('type', 'Local')
+                volume_name = drive_meta.get('volume_name', '')
+                label = f"{letter}: {volume_name}".strip() if volume_name else f"Drive {letter}:"
+
                 drives.append({
-                    "letter": letter,
-                    "label": f"Drive {letter}:",
-                    "path": path,
-                    "display": f"{letter}:\\",
-                    "accessible": accessible,
-                    "free_bytes": free,
-                    "total_bytes": total,
-                    "free_display": format_size(free) if accessible else "N/A",
+                    "letter":        letter,
+                    "label":         label,
+                    "path":          path,
+                    "display":       f"{letter}:\\",
+                    "drive_type":    drive_type,
+                    "accessible":    accessible,
+                    "free_bytes":    free,
+                    "total_bytes":   total,
+                    "free_display":  format_size(free) if accessible else "N/A",
                     "total_display": format_size(total) if accessible else "N/A",
                 })
 
-    # Add extra paths from settings
+    # Add extra paths from settings (always shown as Network)
     extra_raw = await get_setting('extra_paths') or '[]'
     for ep in json.loads(extra_raw):
         accessible = os.path.isdir(ep)
         drives.append({
-            "letter": None,
-            "label": ep,
-            "path": ep,
-            "display": ep,
-            "accessible": accessible,
-            "free_bytes": 0,
-            "total_bytes": 0,
-            "free_display": "N/A",
+            "letter":        None,
+            "label":         ep,
+            "path":          ep,
+            "display":       ep,
+            "drive_type":    "Network",
+            "accessible":    accessible,
+            "free_bytes":    0,
+            "total_bytes":   0,
+            "free_display":  "N/A",
             "total_display": "N/A",
         })
 
@@ -107,23 +127,23 @@ async def browse(path: str = Query(...)):
                     is_dir = entry.is_dir(follow_symlinks=True)
                     info = entry.stat()
                     items.append({
-                        "name": entry.name,
-                        "path": entry.path,
-                        "type": "dir" if is_dir else "file",
-                        "size": info.st_size if not is_dir else None,
+                        "name":         entry.name,
+                        "path":         entry.path,
+                        "type":         "dir" if is_dir else "file",
+                        "size":         info.st_size if not is_dir else None,
                         "size_display": format_size(info.st_size) if not is_dir else None,
-                        "modified": datetime.fromtimestamp(info.st_mtime).isoformat(),
-                        "hidden": entry.name.startswith('.'),
+                        "modified":     datetime.fromtimestamp(info.st_mtime).isoformat(),
+                        "hidden":       entry.name.startswith('.'),
                     })
                 except (PermissionError, OSError):
                     items.append({
-                        "name": entry.name,
-                        "path": entry.path,
-                        "type": "dir" if entry.is_dir() else "file",
-                        "size": None,
+                        "name":         entry.name,
+                        "path":         entry.path,
+                        "type":         "dir" if entry.is_dir() else "file",
+                        "size":         None,
                         "size_display": None,
-                        "modified": None,
-                        "hidden": False,
+                        "modified":     None,
+                        "hidden":       False,
                         "inaccessible": True,
                     })
     except PermissionError:
@@ -133,8 +153,8 @@ async def browse(path: str = Query(...)):
     parent = str(Path(path).parent) if path != DRIVES_DIR and path != '/' else None
 
     return {
-        "path": path,
+        "path":    path,
         "display": container_to_display(path),
-        "parent": parent,
-        "items": items,
+        "parent":  parent,
+        "items":   items,
     }
