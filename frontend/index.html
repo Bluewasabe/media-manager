@@ -1,0 +1,1938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File Manager | JARVIS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0A0F1E;
+      --card-bg: rgba(255,255,255,0.03);
+      --text-primary: #F0F4FF;
+      --text-secondary: #8892A4;
+      --text-muted: #4A5568;
+      --cyan: #00D4FF;
+      --green: #00FF88;
+      --amber: #FFB800;
+      --purple: #AA44FF;
+      --pink: #FF44AA;
+      --blue: #4488FF;
+      --red: #FF4444;
+      --border: rgba(255,255,255,0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: 'Inter', system-ui, sans-serif;
+      margin: 0;
+    }
+
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridPulse 8s ease-in-out infinite;
+    }
+
+    @keyframes gridPulse { 0%,100% { opacity: 0.5 } 50% { opacity: 1 } }
+
+    .orb { position: fixed; border-radius: 50%; filter: blur(80px); z-index: 0; pointer-events: none; }
+    .orb-tl { width: 400px; height: 400px; top: -100px; left: -100px; background: radial-gradient(circle, rgba(170,68,255,0.15), transparent); }
+    .orb-br { width: 500px; height: 500px; bottom: -150px; right: -150px; background: radial-gradient(circle, rgba(0,212,255,0.12), transparent); }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover { border-color: rgba(0,212,255,0.15); box-shadow: 0 0 20px rgba(0,212,255,0.05); }
+    .card-glow-cyan { box-shadow: 0 0 30px rgba(0,212,255,0.1); }
+    .card-glow-green { box-shadow: 0 0 30px rgba(0,255,136,0.1); }
+    .card-glow-purple { box-shadow: 0 0 30px rgba(170,68,255,0.1); }
+
+    .nav-tab {
+      padding: 6px 16px; border-radius: 8px; font-size: 0.8rem; font-weight: 500;
+      color: var(--text-secondary); cursor: pointer; transition: all 0.2s; letter-spacing: 0.05em;
+      border: 1px solid transparent; user-select: none;
+    }
+    .nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+    .nav-tab.active { color: var(--cyan); background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); }
+    .nav-tab-indicator { position: relative; }
+    .nav-tab-indicator::after {
+      content: '';
+      position: absolute;
+      top: 2px; right: 2px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--cyan);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .pill { padding: 2px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; display: inline-block; }
+    .pill-running { background: rgba(0,212,255,0.15); color: var(--cyan); border: 1px solid rgba(0,212,255,0.3); }
+    .pill-completed { background: rgba(0,255,136,0.15); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+    .pill-failed { background: rgba(255,68,68,0.15); color: var(--red); border: 1px solid rgba(255,68,68,0.3); }
+    .pill-cancelled { background: rgba(255,184,0,0.15); color: var(--amber); border: 1px solid rgba(255,184,0,0.3); }
+    .pill-pending { background: rgba(136,146,164,0.15); color: var(--text-secondary); border: 1px solid rgba(136,146,164,0.3); }
+
+    .level-INFO { color: var(--text-secondary); }
+    .level-WARN { color: var(--amber); }
+    .level-ERROR { color: var(--red); }
+    .level-DRY { color: var(--purple); }
+
+    .form-input {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; color: var(--text-primary);
+      font-size: 0.85rem; transition: border-color 0.2s, box-shadow 0.2s;
+      width: 100%;
+    }
+    .form-input:focus { outline: none; border-color: rgba(0,212,255,0.4); box-shadow: 0 0 0 2px rgba(0,212,255,0.1); }
+    .form-input::placeholder { color: var(--text-muted); }
+    select.form-input option { background: #0A0F1E; }
+
+    .btn-primary { background: linear-gradient(135deg, var(--purple), var(--pink)); color: white; border: none; border-radius: 8px; padding: 8px 20px; font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.1s; font-size: 0.85rem; }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-execute { background: linear-gradient(135deg, #FF4444, #FF8800); }
+    .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 8px 16px; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .btn-danger { background: rgba(255,68,68,0.15); border: 1px solid rgba(255,68,68,0.3); color: var(--red); border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 0.8rem; }
+    .btn-danger:hover { background: rgba(255,68,68,0.25); }
+    .btn-icon { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; font-size: 0.8rem; }
+    .btn-icon:hover { color: var(--text-primary); background: rgba(255,255,255,0.08); }
+    .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 6px; }
+
+    .toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+    .toggle input { display: none; }
+    .toggle-track { width: 40px; height: 22px; background: rgba(255,255,255,0.1); border-radius: 11px; position: relative; transition: background 0.2s; border: 1px solid var(--border); flex-shrink: 0; }
+    .toggle input:checked ~ .toggle-track { background: rgba(0,212,255,0.3); border-color: rgba(0,212,255,0.5); }
+    .toggle-thumb { width: 16px; height: 16px; background: var(--text-secondary); border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.2s, background 0.2s; }
+    .toggle input:checked ~ .toggle-track .toggle-thumb { transform: translateX(18px); background: var(--cyan); }
+
+    .exec-toggle { display: flex; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
+    .exec-toggle button { flex: 1; padding: 8px 16px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; transition: all 0.2s; }
+    .exec-toggle button.active-dryrun { background: rgba(170,68,255,0.2); color: var(--purple); }
+    .exec-toggle button.active-execute { background: rgba(255,68,68,0.2); color: var(--red); }
+
+    .seg-btn { display: flex; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
+    .seg-btn button { flex: 1; padding: 7px 14px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.2s; }
+    .seg-btn button.active { background: rgba(0,212,255,0.15); color: var(--cyan); }
+    .seg-btn button.active-amber { background: rgba(255,184,0,0.15); color: var(--amber); }
+    .seg-btn button.active-red { background: rgba(255,68,68,0.15); color: var(--red); }
+    .seg-btn button.active-green { background: rgba(0,255,136,0.15); color: var(--green); }
+
+    .progress-bar { height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    .progress-indeterminate .progress-fill { width: 40%; animation: progressPulse 1.5s ease-in-out infinite; background: linear-gradient(90deg, var(--cyan), var(--purple)); }
+    @keyframes progressPulse { 0% { transform: translateX(-200%) } 100% { transform: translateX(400%) } }
+
+    .phase-steps { display: flex; gap: 4px; align-items: center; }
+    .phase-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.1); transition: all 0.3s; flex-shrink: 0; }
+    .phase-dot.active { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: phasePulse 1s ease-in-out infinite; }
+    .phase-dot.done { background: var(--green); }
+    .phase-dot.failed { background: var(--red); }
+    @keyframes phasePulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.3) } }
+
+    .browser-pane { height: 380px; overflow-y: auto; }
+    .browser-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; font-size: 0.85rem; }
+    .browser-item:hover { background: rgba(255,255,255,0.05); }
+    .browser-item.selected { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); }
+    .browser-item.dir { color: var(--text-primary); }
+    .browser-item.file { color: var(--text-secondary); }
+    .dir-icon { color: var(--amber); font-size: 1rem; }
+    .file-icon { color: var(--text-muted); font-size: 0.9rem; }
+
+    .drive-card { display: flex; flex-direction: column; padding: 10px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); transition: all 0.2s; gap: 4px; background: var(--card-bg); }
+    .drive-card:hover { border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.05); }
+    .drive-card.inaccessible { opacity: 0.4; cursor: not-allowed; }
+
+    .log-line { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.75rem; padding: 2px 8px; border-radius: 2px; line-height: 1.6; }
+    .log-line:hover { background: rgba(255,255,255,0.03); }
+    .log-line.ERROR { background: rgba(255,68,68,0.05); border-left: 2px solid var(--red); padding-left: 6px; }
+    .log-line.WARN { border-left: 2px solid var(--amber); padding-left: 6px; }
+    .log-line.DRY { border-left: 2px solid var(--purple); padding-left: 6px; }
+
+    .breadcrumb-item { color: var(--text-secondary); cursor: pointer; font-size: 0.8rem; transition: color 0.15s; }
+    .breadcrumb-item:hover { color: var(--cyan); }
+    .breadcrumb-sep { color: var(--text-muted); margin: 0 4px; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+
+    .toast { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+    .toast-item { background: rgba(15,20,40,0.95); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; min-width: 280px; backdrop-filter: blur(20px); animation: toastIn 0.3s ease; }
+    .toast-item.success { border-left: 3px solid var(--green); }
+    .toast-item.error { border-left: 3px solid var(--red); }
+    .toast-item.info { border-left: 3px solid var(--cyan); }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(20px) } to { opacity: 1; transform: translateX(0) } }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+    .source-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; }
+
+    .fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+
+    .stat-value { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; }
+    .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); }
+
+    .section-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); font-weight: 600; margin-bottom: 12px; }
+
+    .online-badge { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.2); border-radius: 20px; font-size: 0.7rem; color: var(--green); }
+    .offline-badge { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.2); border-radius: 20px; font-size: 0.7rem; color: var(--red); }
+    .pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; flex-shrink: 0; }
+    .pulse-dot-red { background: var(--red); }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1) } 50% { opacity: 0.5; transform: scale(0.8) } }
+
+    .script-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; flex-shrink: 0; }
+    .script-icon-media { background: linear-gradient(135deg, rgba(0,212,255,0.3), rgba(0,212,255,0.1)); color: var(--cyan); border: 1px solid rgba(0,212,255,0.3); }
+    .script-icon-drill { background: linear-gradient(135deg, rgba(170,68,255,0.3), rgba(170,68,255,0.1)); color: var(--purple); border: 1px solid rgba(170,68,255,0.3); }
+    .script-icon-dupe { background: linear-gradient(135deg, rgba(0,255,136,0.3), rgba(0,255,136,0.1)); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+
+    .config-panel { display: none; border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
+    .config-panel.open { display: block; }
+
+    .usage-bar { height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+    .usage-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--cyan), var(--purple)); transition: width 0.3s; }
+
+    .form-label { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; display: block; font-weight: 500; letter-spacing: 0.03em; }
+    .form-row { display: flex; gap: 8px; align-items: flex-end; }
+    .form-group { margin-bottom: 14px; }
+
+    .checkbox-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .checkbox-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; user-select: none; transition: all 0.15s; }
+    .checkbox-item:hover { background: rgba(255,255,255,0.06); border-color: rgba(0,212,255,0.2); }
+    .checkbox-item input { display: none; }
+    .checkbox-box { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 0.65rem; transition: all 0.15s; flex-shrink: 0; }
+    .checkbox-item input:checked ~ .checkbox-box { background: rgba(0,212,255,0.25); border-color: var(--cyan); color: var(--cyan); }
+
+    .warning-box { padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; }
+    .warning-amber { background: rgba(255,184,0,0.08); border: 1px solid rgba(255,184,0,0.2); color: var(--amber); }
+    .warning-red { background: rgba(255,68,68,0.08); border: 1px solid rgba(255,68,68,0.2); color: var(--red); }
+
+    .job-active-card { animation: fadeIn 0.3s ease; }
+
+    .live-log { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px; height: 160px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; }
+
+    .hidden { display: none !important; }
+    .tab-panel { }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="grid-bg"></div>
+  <div class="orb orb-tl"></div>
+  <div class="orb orb-br"></div>
+
+  <div class="relative z-10">
+    <!-- Navigation -->
+    <nav style="border-bottom: 1px solid var(--border); background: rgba(10,15,30,0.8); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 50;">
+      <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <div style="background:linear-gradient(135deg,var(--cyan),var(--purple));border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.9rem;color:white;flex-shrink:0">FM</div>
+          <span style="font-weight:700;font-size:0.95rem;letter-spacing:0.15em;background:linear-gradient(90deg,var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">FILE MANAGER</span>
+          <span style="color:var(--text-muted);font-size:0.75rem">by JARVIS</span>
+        </div>
+        <div class="flex gap-1" id="nav-tabs"></div>
+        <div id="api-status" class="online-badge">
+          <div class="pulse-dot"></div>
+          <span>Connected</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto px-6 py-6">
+      <div id="tab-dashboard" class="tab-panel"></div>
+      <div id="tab-scripts" class="tab-panel hidden"></div>
+      <div id="tab-explorer" class="tab-panel hidden"></div>
+      <div id="tab-jobs" class="tab-panel hidden"></div>
+      <div id="tab-logs" class="tab-panel hidden"></div>
+      <div id="tab-settings" class="tab-panel hidden"></div>
+    </main>
+  </div>
+
+  <!-- File Browser Modal -->
+  <div id="browser-modal" class="modal-overlay hidden">
+    <div class="card" style="width:780px;max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden;">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <div>
+          <div style="font-weight:600;font-size:0.95rem;" id="browser-title">Browse Files</div>
+          <div id="browser-breadcrumb" style="display:flex;align-items:center;flex-wrap:wrap;margin-top:6px;gap:2px;"></div>
+        </div>
+        <button onclick="closeBrowser()" class="btn-icon">✕</button>
+      </div>
+      <div id="browser-content" class="browser-pane" style="flex:1;padding:8px;"></div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;background:rgba(0,0,0,0.2);">
+        <div style="flex:1;overflow:hidden;">
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:2px;">Selected path</div>
+          <div id="browser-selected-path" style="font-size:0.8rem;color:var(--cyan);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
+        </div>
+        <button onclick="browserSelectFolder()" class="btn-primary btn-sm" id="browser-select-btn">Select This Folder</button>
+        <button onclick="closeBrowser()" class="btn-secondary btn-sm">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast" id="toast-container"></div>
+
+<script>
+// =====================================================================
+// CONFIG & STATE
+// =====================================================================
+const TABS = ['dashboard', 'scripts', 'explorer', 'jobs', 'logs', 'settings'];
+const TAB_LABELS = {
+  dashboard: 'Dashboard',
+  scripts: 'Scripts',
+  explorer: 'Explorer',
+  jobs: 'Jobs',
+  logs: 'Logs',
+  settings: 'Settings'
+};
+const SCRIPT_LABELS = {
+  media_organizer: 'Media Organizer',
+  disk_drill: 'Disk Drill Organizer',
+  duplicate_finder: 'Duplicate Finder'
+};
+
+const state = {
+  activeTab: 'dashboard',
+  jobs: [],
+  jobWS: {},
+  jobLogs: {},
+  jobStats: {},
+  browserTarget: null,
+  browserPath: null,
+  browserCallback: null,
+  drives: [],
+  scriptExecMode: { media_organizer: false, disk_drill: false, duplicate_finder: false },
+  dfSources: [],
+  activeJobFilter: null,
+  logsOffset: 0,
+  activeJobs: new Set(),
+};
+
+// =====================================================================
+// API CLIENT
+// =====================================================================
+async function api(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch('/api' + path, opts);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || 'API error');
+  }
+  return r.json();
+}
+
+// =====================================================================
+// TOAST
+// =====================================================================
+function toast(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast-item ${type}`;
+  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:1rem;${type==='success'?'color:var(--green)':type==='error'?'color:var(--red)':'color:var(--cyan)'}">${icon}</span>
+      <span style="font-size:0.85rem;color:var(--text-primary)">${msg}</span>
+    </div>`;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(20px)';
+    el.style.transition = 'all 0.3s';
+    setTimeout(() => el.remove(), 300);
+  }, 4000);
+}
+
+// =====================================================================
+// UTILITIES
+// =====================================================================
+function containerToDisplay(path) {
+  const DRIVES_DIR = '/mnt/drives';
+  if (path && path.startsWith(DRIVES_DIR + '/')) {
+    const rest = path.slice(DRIVES_DIR.length + 1);
+    const idx = rest.indexOf('/');
+    if (idx === -1) return rest.toUpperCase() + ':\\';
+    const letter = rest.slice(0, idx).toUpperCase();
+    const sub = rest.slice(idx + 1).replace(/\//g, '\\');
+    return letter + ':\\' + sub;
+  }
+  return path;
+}
+
+function formatSize(bytes) {
+  if (!bytes && bytes !== 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let n = bytes;
+  for (const u of units) {
+    if (n < 1024) return `${n.toFixed(1)} ${u}`;
+    n /= 1024;
+  }
+  return `${n.toFixed(1)} PB`;
+}
+
+function relativeTime(iso) {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso + 'Z').getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function statusPill(status) {
+  return `<span class="pill pill-${status}">${status}</span>`;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function saveLS(key, val) {
+  try { localStorage.setItem('fm_' + key, JSON.stringify(val)); } catch {}
+}
+function loadLS(key, def) {
+  try {
+    const v = localStorage.getItem('fm_' + key);
+    return v !== null ? JSON.parse(v) : def;
+  } catch { return def; }
+}
+
+// =====================================================================
+// NAVIGATION
+// =====================================================================
+function renderNav() {
+  const container = document.getElementById('nav-tabs');
+  const hasRunning = state.jobs.some(j => j.status === 'running' || j.status === 'pending');
+  container.innerHTML = TABS.map(t => {
+    const isActive = state.activeTab === t;
+    const isJobs = t === 'jobs';
+    const indicator = isJobs && hasRunning && !isActive ? ' nav-tab-indicator' : '';
+    return `<div class="nav-tab${isActive ? ' active' : ''}${indicator}" onclick="switchTab('${t}')">${TAB_LABELS[t]}</div>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  const prev = document.getElementById('tab-' + state.activeTab);
+  if (prev) prev.classList.add('hidden');
+  state.activeTab = tab;
+  saveLS('activeTab', tab);
+  const next = document.getElementById('tab-' + tab);
+  if (next) next.classList.remove('hidden');
+  renderNav();
+  renderTab(tab);
+}
+
+function renderTab(tab) {
+  if (tab === 'dashboard') renderDashboard();
+  else if (tab === 'scripts') renderScripts();
+  else if (tab === 'explorer') renderExplorer();
+  else if (tab === 'jobs') renderJobs();
+  else if (tab === 'logs') renderLogs();
+  else if (tab === 'settings') renderSettings();
+}
+
+// =====================================================================
+// API STATUS CHECK
+// =====================================================================
+async function checkApiStatus() {
+  const el = document.getElementById('api-status');
+  try {
+    await api('/drives');
+    el.className = 'online-badge';
+    el.innerHTML = `<div class="pulse-dot"></div><span>Connected</span>`;
+  } catch {
+    el.className = 'offline-badge';
+    el.innerHTML = `<div class="pulse-dot pulse-dot-red" style="background:var(--red)"></div><span>Offline</span>`;
+  }
+}
+
+// =====================================================================
+// DASHBOARD
+// =====================================================================
+async function renderDashboard() {
+  const el = document.getElementById('tab-dashboard');
+  el.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:40px">Loading...</div>`;
+  try {
+    const jobs = await api('/jobs?limit=50');
+    state.jobs = jobs;
+    const total = jobs.length;
+    const running = jobs.filter(j => j.status === 'running' || j.status === 'pending').length;
+    const completed = jobs.filter(j => j.status === 'completed').length;
+    const failed = jobs.filter(j => j.status === 'failed').length;
+    const recent = jobs.slice(0, 10);
+
+    el.innerHTML = `
+      <div class="fade-in">
+        <div style="margin-bottom:24px;">
+          <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 4px;">Dashboard</h1>
+          <p style="color:var(--text-secondary);font-size:0.85rem;margin:0;">Media management overview</p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;">
+          ${statCard('Total Jobs', total, 'var(--cyan)', '⚙')}
+          ${statCard('Running', running, 'var(--amber)', '▶', running > 0 ? 'card-glow-cyan' : '')}
+          ${statCard('Completed', completed, 'var(--green)', '✓')}
+          ${statCard('Failed', failed, 'var(--red)', '✕')}
+        </div>
+
+        <div class="card" style="padding:20px;">
+          <div class="section-header">Recent Jobs</div>
+          ${recent.length === 0 ? `<div style="color:var(--text-muted);text-align:center;padding:32px 0;font-size:0.85rem;">No jobs yet. Run a script from the Scripts tab.</div>` :
+            `<div style="display:flex;flex-direction:column;gap:8px;">${recent.map(j => recentJobRow(j)).join('')}</div>`}
+        </div>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<div style="color:var(--red);text-align:center;padding:40px">Failed to load: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function statCard(label, value, color, icon, extra = '') {
+  return `
+    <div class="card ${extra}" style="padding:20px;border-color:${color}22;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;">
+        <span class="stat-label">${label}</span>
+        <span style="font-size:1.2rem;color:${color};opacity:0.7">${icon}</span>
+      </div>
+      <div class="stat-value" style="color:${color}">${value}</div>
+    </div>`;
+}
+
+function recentJobRow(j) {
+  const stats = j.stats || {};
+  const moved = stats.moved || 0;
+  const errors = stats.errors || 0;
+  return `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.85rem;font-weight:500;margin-bottom:2px;">${SCRIPT_LABELS[j.script] || j.script}</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);">${relativeTime(j.created_at)}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        ${moved > 0 ? `<span style="font-size:0.75rem;color:var(--green)">${moved} moved</span>` : ''}
+        ${errors > 0 ? `<span style="font-size:0.75rem;color:var(--red)">${errors} errors</span>` : ''}
+      </div>
+      ${statusPill(j.status)}
+      <button class="btn-icon btn-sm" onclick="switchTab('logs');setTimeout(()=>filterLogsForJob('${j.id}'),200)">Logs</button>
+    </div>`;
+}
+
+// =====================================================================
+// SCRIPTS TAB
+// =====================================================================
+function renderScripts() {
+  const el = document.getElementById('tab-scripts');
+  el.innerHTML = `
+    <div class="fade-in">
+      <div style="margin-bottom:24px;">
+        <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 4px;">Scripts</h1>
+        <p style="color:var(--text-secondary);font-size:0.85rem;margin:0;">Configure and run media management scripts</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        ${scriptCard('media_organizer', 'MO', 'script-icon-media', 'Media Organizer',
+          'Organizes movies and TV shows into structured directories using TMDB-style naming.',
+          ['Movies', 'TV Shows', 'Rename', 'Dry Run'],
+          renderMediaOrganizerConfig)}
+        ${scriptCard('disk_drill', 'DD', 'script-icon-drill', 'Disk Drill Organizer',
+          'Sorts recovered files by type (photos/videos/docs) with quality filtering.',
+          ['Photos', 'Videos', 'Documents', 'Filter', 'Recover'],
+          renderDiskDrillConfig)}
+        ${scriptCard('duplicate_finder', 'DF', 'script-icon-dupe', 'Duplicate Finder',
+          'Finds and removes duplicate files using hash comparison and perceptual image matching.',
+          ['Duplicates', 'Archive', 'Hash', 'Perceptual', 'Storage'],
+          renderDuplicateFinderConfig)}
+      </div>
+    </div>`;
+
+  // Restore open states
+  ['media_organizer', 'disk_drill', 'duplicate_finder'].forEach(s => {
+    if (loadLS('script_open_' + s, false)) {
+      document.getElementById('config-' + s).classList.add('open');
+      document.getElementById('config-' + s).innerHTML = getConfigRenderer(s)();
+      bindConfigEvents(s);
+    }
+  });
+}
+
+function getConfigRenderer(s) {
+  if (s === 'media_organizer') return renderMediaOrganizerConfig;
+  if (s === 'disk_drill') return renderDiskDrillConfig;
+  if (s === 'duplicate_finder') return renderDuplicateFinderConfig;
+}
+
+function scriptCard(id, initials, iconClass, name, desc, tags, configRenderer) {
+  const tagsHtml = tags.map(t => `<span style="padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:4px;font-size:0.7rem;color:var(--text-muted)">${t}</span>`).join('');
+  return `
+    <div class="card" style="padding:20px;" id="card-${id}">
+      <div style="display:flex;align-items:flex-start;gap:16px;">
+        <div class="script-icon ${iconClass}">${initials}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:0.95rem;margin-bottom:4px;">${name}</div>
+          <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:10px;line-height:1.5;">${desc}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">${tagsHtml}</div>
+        </div>
+        <button class="btn-secondary btn-sm" onclick="toggleConfig('${id}')">Configure</button>
+      </div>
+      <div class="config-panel" id="config-${id}"></div>
+    </div>`;
+}
+
+function toggleConfig(id) {
+  const panel = document.getElementById('config-' + id);
+  const isOpen = panel.classList.contains('open');
+  if (isOpen) {
+    panel.classList.remove('open');
+    saveLS('script_open_' + id, false);
+  } else {
+    panel.classList.add('open');
+    panel.innerHTML = getConfigRenderer(id)();
+    bindConfigEvents(id);
+    saveLS('script_open_' + id, true);
+  }
+}
+
+function bindConfigEvents(id) {
+  const panel = document.getElementById('config-' + id);
+  // Wire up browse buttons
+  panel.querySelectorAll('[data-browse]').forEach(btn => {
+    const target = btn.getAttribute('data-browse');
+    const multi = btn.getAttribute('data-multi') === 'true';
+    btn.onclick = () => openBrowser(target, multi ? 'df-add-source' : null);
+  });
+}
+
+// ---- Media Organizer Config ----
+function renderMediaOrganizerConfig() {
+  const saved = loadLS('cfg_media_organizer', { mode: 'movies', path: '', execute: false });
+  return `
+    <div class="fade-in">
+      <div class="form-group">
+        <label class="form-label">Mode</label>
+        <div class="seg-btn" id="mo-mode-seg">
+          <button onclick="setSegBtn('mo-mode-seg',this,'movies')" class="${saved.mode==='movies'?'active':''}" data-val="movies">Movies</button>
+          <button onclick="setSegBtn('mo-mode-seg',this,'tv')" class="${saved.mode==='tv'?'active':''}" data-val="tv">TV Shows</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Scan Path <span style="color:var(--text-muted)">(optional, defaults to configured media dir)</span></label>
+        <div class="form-row">
+          <input class="form-input" id="mo-path" value="${escHtml(saved.path)}" placeholder="/mnt/drives/d/Media" />
+          <button class="btn-icon" style="flex-shrink:0" data-browse="mo-path">Browse</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Execution Mode</label>
+        <div class="exec-toggle">
+          <button id="mo-dry-btn" onclick="setExecMode('media_organizer',false)" class="${!state.scriptExecMode.media_organizer?'active-dryrun':''}">DRY RUN</button>
+          <button id="mo-exec-btn" onclick="setExecMode('media_organizer',true)" class="${state.scriptExecMode.media_organizer?'active-execute':''}">EXECUTE</button>
+        </div>
+        ${state.scriptExecMode.media_organizer ? `<div class="warning-box warning-red" style="margin-top:8px">⚠ Execute mode will rename/move actual files</div>` : `<div style="margin-top:8px;font-size:0.75rem;color:var(--purple)">Dry run will show what would happen without making changes</div>`}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button onclick="runScript('media_organizer')" class="btn-primary ${state.scriptExecMode.media_organizer?'btn-execute':''}">
+          ${state.scriptExecMode.media_organizer ? '⚡ Execute' : '▶ Dry Run'}
+        </button>
+        <div style="font-size:0.75rem;color:var(--text-muted);align-self:center">Scans for media files and applies naming conventions</div>
+      </div>
+    </div>`;
+}
+
+// ---- Disk Drill Config ----
+function renderDiskDrillConfig() {
+  const saved = loadLS('cfg_disk_drill', {
+    input_dir: '', output_dir: '', execute: false, move: false,
+    include_filtered: false, skip_video_meta: false,
+    min_photo_px: 800, min_video_sec: 30, workers: 8
+  });
+  const isMove = saved.move;
+  return `
+    <div class="fade-in">
+      <div class="form-group">
+        <label class="form-label">Input Directory <span style="color:var(--red)">*</span></label>
+        <div class="form-row">
+          <input class="form-input" id="dd-input" value="${escHtml(saved.input_dir)}" placeholder="/mnt/drives/d/recovered" />
+          <button class="btn-icon" style="flex-shrink:0" data-browse="dd-input">Browse</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Output Directory <span style="color:var(--red)">*</span></label>
+        <div class="form-row">
+          <input class="form-input" id="dd-output" value="${escHtml(saved.output_dir)}" placeholder="/mnt/drives/e/sorted" />
+          <button class="btn-icon" style="flex-shrink:0" data-browse="dd-output">Browse</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Operation</label>
+        <div class="seg-btn" id="dd-op-seg">
+          <button onclick="setSegBtn('dd-op-seg',this,'copy')" class="${!isMove?'active':''}" data-val="copy">Copy</button>
+          <button onclick="setSegBtn('dd-op-seg',this,'move')" class="${isMove?'active-amber':''}" data-val="move">Move</button>
+        </div>
+        ${isMove ? `<div class="warning-box warning-amber" style="margin-top:8px">⚠ Move is destructive — files will be removed from source after copy</div>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;" class="form-group">
+        <div>
+          <label class="form-label">Min Photo Size (px)</label>
+          <input type="number" class="form-input" id="dd-min-photo" value="${saved.min_photo_px}" />
+        </div>
+        <div>
+          <label class="form-label">Min Video Duration (sec)</label>
+          <input type="number" class="form-input" id="dd-min-video" value="${saved.min_video_sec}" />
+        </div>
+        <div>
+          <label class="form-label">Workers</label>
+          <input type="number" class="form-input" id="dd-workers" value="${saved.workers}" min="1" max="32" />
+        </div>
+      </div>
+      <div style="display:flex;gap:24px;margin-bottom:14px;">
+        <label class="toggle">
+          <input type="checkbox" id="dd-include-filtered" ${saved.include_filtered ? 'checked' : ''} />
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Include Filtered Files</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="dd-skip-video-meta" ${saved.skip_video_meta ? 'checked' : ''} />
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Skip Video Metadata</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Execution Mode</label>
+        <div class="exec-toggle">
+          <button id="dd-dry-btn" onclick="setExecMode('disk_drill',false)" class="${!state.scriptExecMode.disk_drill?'active-dryrun':''}">DRY RUN</button>
+          <button id="dd-exec-btn" onclick="setExecMode('disk_drill',true)" class="${state.scriptExecMode.disk_drill?'active-execute':''}">EXECUTE</button>
+        </div>
+        ${state.scriptExecMode.disk_drill ? `<div class="warning-box warning-red" style="margin-top:8px">⚠ Execute mode will copy/move actual files</div>` : ''}
+      </div>
+      <button onclick="runScript('disk_drill')" class="btn-primary ${state.scriptExecMode.disk_drill?'btn-execute':''}">
+        ${state.scriptExecMode.disk_drill ? '⚡ Execute' : '▶ Dry Run'}
+      </button>
+    </div>`;
+}
+
+// ---- Duplicate Finder Config ----
+function renderDuplicateFinderConfig() {
+  const saved = loadLS('cfg_duplicate_finder', {
+    output: '', execute: false, action: 'archive', archive: '',
+    types: ['all'], perceptual: false, skip_video_meta: false,
+    hash: 'sha256', workers: 8, min_size: 4096
+  });
+
+  const typesAll = ['all', 'photos', 'videos', 'audio', 'documents', 'other'];
+  const typesHtml = typesAll.map(t => `
+    <label class="checkbox-item">
+      <input type="checkbox" data-type="${t}" ${(saved.types||['all']).includes(t)?'checked':''} onchange="dfTypeChange()"/>
+      <div class="checkbox-box">${(saved.types||['all']).includes(t)?'✓':''}</div>
+      <span style="font-size:0.8rem;color:var(--text-secondary);text-transform:capitalize">${t}</span>
+    </label>`).join('');
+
+  const sourcesHtml = state.dfSources.length === 0
+    ? `<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.82rem;">No sources added yet</div>`
+    : state.dfSources.map((s, i) => `
+      <div class="source-item">
+        <span style="font-size:0.7rem;font-weight:700;color:var(--purple);min-width:20px">P${i+1}</span>
+        <span style="flex:1;font-size:0.82rem;font-family:monospace;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(containerToDisplay(s))}</span>
+        <button class="btn-icon btn-sm" onclick="dfRemoveSource(${i})">✕</button>
+      </div>`).join('');
+
+  return `
+    <div class="fade-in">
+      <div class="form-group">
+        <label class="form-label">Source Directories <span style="color:var(--red)">*</span> <span style="color:var(--text-muted)">(priority order: P1 is kept, others are duplicates)</span></label>
+        <div id="df-sources-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">${sourcesHtml}</div>
+        <button class="btn-icon btn-sm" onclick="openBrowser(null,'df-add-source')">+ Add Source Directory</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Output Directory <span style="color:var(--red)">*</span></label>
+        <div class="form-row">
+          <input class="form-input" id="df-output" value="${escHtml(saved.output)}" placeholder="/mnt/drives/e/duplicates" />
+          <button class="btn-icon" style="flex-shrink:0" data-browse="df-output">Browse</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Action</label>
+        <div class="seg-btn" id="df-action-seg">
+          <button onclick="setDfAction('archive')" class="${saved.action==='archive'?'active':''}" data-val="archive">Archive</button>
+          <button onclick="setDfAction('delete')" class="${saved.action==='delete'?'active-red':''}" data-val="delete">Delete</button>
+          <button onclick="setDfAction('report')" class="${saved.action==='report'?'active-green':''}" data-val="report">Report Only</button>
+        </div>
+        ${saved.action==='delete' ? `<div class="warning-box warning-red" style="margin-top:8px">⚠ Delete is irreversible — duplicates will be permanently removed</div>` : ''}
+      </div>
+      <div id="df-archive-row" class="form-group" style="${saved.action==='archive'?'':'display:none'}">
+        <label class="form-label">Archive Directory</label>
+        <div class="form-row">
+          <input class="form-input" id="df-archive" value="${escHtml(saved.archive)}" placeholder="/mnt/drives/e/archive" />
+          <button class="btn-icon" style="flex-shrink:0" data-browse="df-archive">Browse</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">File Types</label>
+        <div class="checkbox-grid">${typesHtml}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" class="form-group">
+        <div>
+          <label class="form-label">Hash Algorithm</label>
+          <div class="seg-btn" id="df-hash-seg">
+            <button onclick="setSegBtn('df-hash-seg',this,'sha256')" class="${(saved.hash||'sha256')==='sha256'?'active':''}" data-val="sha256">SHA-256</button>
+            <button onclick="setSegBtn('df-hash-seg',this,'md5')" class="${saved.hash==='md5'?'active':''}" data-val="md5">MD5</button>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Workers</label>
+          <input type="number" class="form-input" id="df-workers" value="${saved.workers||8}" min="1" max="32" />
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" class="form-group">
+        <div>
+          <label class="form-label">Min File Size (bytes)</label>
+          <input type="number" class="form-input" id="df-min-size" value="${saved.min_size||4096}" />
+        </div>
+      </div>
+      <div style="display:flex;gap:24px;margin-bottom:14px;">
+        <label class="toggle">
+          <input type="checkbox" id="df-perceptual" ${saved.perceptual?'checked':''} />
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Perceptual Hashing (images)</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="df-skip-video-meta" ${saved.skip_video_meta?'checked':''} />
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Skip Video Metadata</span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Execution Mode</label>
+        <div class="exec-toggle">
+          <button id="df-dry-btn" onclick="setExecMode('duplicate_finder',false)" class="${!state.scriptExecMode.duplicate_finder?'active-dryrun':''}">DRY RUN</button>
+          <button id="df-exec-btn" onclick="setExecMode('duplicate_finder',true)" class="${state.scriptExecMode.duplicate_finder?'active-execute':''}">EXECUTE</button>
+        </div>
+        ${state.scriptExecMode.duplicate_finder ? `<div class="warning-box warning-red" style="margin-top:8px">⚠ Execute mode will process actual files</div>` : ''}
+      </div>
+      <button onclick="runScript('duplicate_finder')" class="btn-primary ${state.scriptExecMode.duplicate_finder?'btn-execute':''}">
+        ${state.scriptExecMode.duplicate_finder ? '⚡ Execute' : '▶ Dry Run'}
+      </button>
+    </div>`;
+}
+
+function dfTypeChange() {
+  const panel = document.getElementById('config-duplicate_finder');
+  if (!panel) return;
+  const allCb = panel.querySelector('[data-type="all"]');
+  const otherCbs = Array.from(panel.querySelectorAll('[data-type]:not([data-type="all"])'));
+  // If "all" was just clicked, uncheck others
+  if (allCb && allCb.checked) {
+    otherCbs.forEach(cb => { cb.checked = false; });
+  } else {
+    // If any specific checked, uncheck "all"
+    if (allCb) allCb.checked = false;
+  }
+  // Update visual checkmarks
+  panel.querySelectorAll('.checkbox-item').forEach(item => {
+    const cb = item.querySelector('input[type="checkbox"]');
+    const box = item.querySelector('.checkbox-box');
+    if (box) box.textContent = cb.checked ? '✓' : '';
+  });
+}
+
+function setDfAction(action) {
+  const seg = document.getElementById('df-action-seg');
+  if (!seg) return;
+  seg.querySelectorAll('button').forEach(b => {
+    b.className = b.getAttribute('data-val') === action
+      ? (action === 'delete' ? 'active-red' : action === 'report' ? 'active-green' : 'active')
+      : '';
+  });
+  const archiveRow = document.getElementById('df-archive-row');
+  if (archiveRow) archiveRow.style.display = action === 'archive' ? '' : 'none';
+  // Show/hide warning
+  const existing = seg.parentElement.querySelector('.warning-box');
+  if (existing) existing.remove();
+  if (action === 'delete') {
+    const w = document.createElement('div');
+    w.className = 'warning-box warning-red';
+    w.style.marginTop = '8px';
+    w.textContent = '⚠ Delete is irreversible — duplicates will be permanently removed';
+    seg.parentElement.appendChild(w);
+  }
+}
+
+function dfRemoveSource(idx) {
+  state.dfSources.splice(idx, 1);
+  document.getElementById('df-sources-list').innerHTML = state.dfSources.length === 0
+    ? `<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.82rem;">No sources added yet</div>`
+    : state.dfSources.map((s, i) => `
+      <div class="source-item">
+        <span style="font-size:0.7rem;font-weight:700;color:var(--purple);min-width:20px">P${i+1}</span>
+        <span style="flex:1;font-size:0.82rem;font-family:monospace;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(containerToDisplay(s))}</span>
+        <button class="btn-icon btn-sm" onclick="dfRemoveSource(${i})">✕</button>
+      </div>`).join('');
+}
+
+function setSegBtn(id, btn, val) {
+  const seg = document.getElementById(id);
+  if (!seg) return;
+  seg.querySelectorAll('button').forEach(b => {
+    b.className = b.getAttribute('data-val') === val ? 'active' : '';
+  });
+}
+
+function setExecMode(script, execute) {
+  state.scriptExecMode[script] = execute;
+  // Re-render the config panel
+  const panel = document.getElementById('config-' + script);
+  if (panel && panel.classList.contains('open')) {
+    panel.innerHTML = getConfigRenderer(script)();
+    bindConfigEvents(script);
+  }
+}
+
+function collectConfig(script) {
+  if (script === 'media_organizer') {
+    const modeSeg = document.getElementById('mo-mode-seg');
+    const mode = modeSeg ? (modeSeg.querySelector('button.active')?.getAttribute('data-val') || 'movies') : 'movies';
+    return {
+      mode,
+      path: document.getElementById('mo-path')?.value?.trim() || '',
+      execute: state.scriptExecMode.media_organizer,
+    };
+  }
+  if (script === 'disk_drill') {
+    const opSeg = document.getElementById('dd-op-seg');
+    const isMove = opSeg ? (opSeg.querySelector('button.active-amber')?.getAttribute('data-val') === 'move') : false;
+    return {
+      input_dir: document.getElementById('dd-input')?.value?.trim() || '',
+      output_dir: document.getElementById('dd-output')?.value?.trim() || '',
+      execute: state.scriptExecMode.disk_drill,
+      move: isMove,
+      include_filtered: document.getElementById('dd-include-filtered')?.checked || false,
+      skip_video_meta: document.getElementById('dd-skip-video-meta')?.checked || false,
+      min_photo_px: parseInt(document.getElementById('dd-min-photo')?.value || '800'),
+      min_video_sec: parseInt(document.getElementById('dd-min-video')?.value || '30'),
+      workers: parseInt(document.getElementById('dd-workers')?.value || '8'),
+    };
+  }
+  if (script === 'duplicate_finder') {
+    const actionSeg = document.getElementById('df-action-seg');
+    const activeAction = actionSeg?.querySelector('button.active,button.active-red,button.active-green');
+    const action = activeAction?.getAttribute('data-val') || 'archive';
+    const hashSeg = document.getElementById('df-hash-seg');
+    const hash = hashSeg?.querySelector('button.active')?.getAttribute('data-val') || 'sha256';
+    const typeCbs = Array.from(document.querySelectorAll('#config-duplicate_finder [data-type]:checked')).map(c => c.getAttribute('data-type'));
+    return {
+      sources: [...state.dfSources],
+      output: document.getElementById('df-output')?.value?.trim() || '',
+      execute: state.scriptExecMode.duplicate_finder,
+      action,
+      archive: document.getElementById('df-archive')?.value?.trim() || '',
+      types: typeCbs.length > 0 ? typeCbs : ['all'],
+      perceptual: document.getElementById('df-perceptual')?.checked || false,
+      skip_video_meta: document.getElementById('df-skip-video-meta')?.checked || false,
+      hash,
+      workers: parseInt(document.getElementById('df-workers')?.value || '8'),
+      min_size: parseInt(document.getElementById('df-min-size')?.value || '4096'),
+    };
+  }
+}
+
+async function runScript(script) {
+  const config = collectConfig(script);
+
+  // Validation
+  if (script === 'disk_drill') {
+    if (!config.input_dir) { toast('Input directory is required', 'error'); return; }
+    if (!config.output_dir) { toast('Output directory is required', 'error'); return; }
+  }
+  if (script === 'duplicate_finder') {
+    if (!config.sources || config.sources.length === 0) { toast('At least one source directory is required', 'error'); return; }
+    if (!config.output) { toast('Output directory is required', 'error'); return; }
+  }
+
+  // Save config to localStorage
+  saveLS('cfg_' + script, config);
+
+  try {
+    const result = await api('/jobs', 'POST', { script, config });
+    toast(`Job started: ${SCRIPT_LABELS[script]}`, 'success');
+    // Navigate to jobs tab
+    switchTab('jobs');
+    // Auto-connect WS for the new job
+    setTimeout(() => connectJobWS(result.job_id), 300);
+  } catch (e) {
+    toast('Failed to start job: ' + e.message, 'error');
+  }
+}
+
+// =====================================================================
+// EXPLORER TAB
+// =====================================================================
+let explorerPath = null;
+
+async function renderExplorer() {
+  const el = document.getElementById('tab-explorer');
+  el.innerHTML = `
+    <div class="fade-in">
+      <div style="margin-bottom:24px;">
+        <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 4px;">Explorer</h1>
+        <p style="color:var(--text-secondary);font-size:0.85rem;margin:0;">Browse your file system</p>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:rgba(0,0,0,0.2);">
+          <button id="exp-back-btn" class="btn-icon" onclick="explorerGoUp()" ${explorerPath?'':'disabled'} style="${explorerPath?'':'opacity:0.3;cursor:not-allowed'}">← Back</button>
+          <div id="exp-breadcrumb" style="display:flex;align-items:center;flex-wrap:wrap;flex:1;gap:2px;"></div>
+          <button class="btn-icon" onclick="explorerRefresh()">↺ Refresh</button>
+          <button class="btn-icon" onclick="explorerGoHome()">⌂ Drives</button>
+        </div>
+        <div id="exp-content" style="min-height:400px;padding:8px;"></div>
+      </div>
+    </div>`;
+
+  if (explorerPath) {
+    await explorerNavigate(explorerPath);
+  } else {
+    await explorerShowDrives();
+  }
+}
+
+async function explorerShowDrives() {
+  explorerPath = null;
+  const content = document.getElementById('exp-content');
+  const breadcrumb = document.getElementById('exp-breadcrumb');
+  if (breadcrumb) breadcrumb.innerHTML = `<span style="color:var(--text-muted);font-size:0.8rem">Drives</span>`;
+  document.getElementById('exp-back-btn').disabled = true;
+  document.getElementById('exp-back-btn').style.opacity = '0.3';
+  content.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:32px">Loading drives...</div>`;
+
+  try {
+    const drives = await api('/drives');
+    state.drives = drives;
+    if (drives.length === 0) {
+      content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">No drives found. Run setup.ps1 to mount drives.</div>`;
+      return;
+    }
+    content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:16px;">${drives.map(d => explorerDriveCard(d)).join('')}</div>`;
+  } catch (e) {
+    content.innerHTML = `<div style="color:var(--red);text-align:center;padding:32px">${escHtml(e.message)}</div>`;
+  }
+}
+
+function explorerDriveCard(d) {
+  const usedPct = d.total_bytes > 0 ? Math.round((d.total_bytes - d.free_bytes) / d.total_bytes * 100) : 0;
+  return `
+    <div class="drive-card ${d.accessible?'':'inaccessible'}" onclick="${d.accessible ? `explorerNavigate('${d.path}')` : ''}">
+      <div style="font-size:1.5rem;margin-bottom:4px;">${d.letter ? '💾' : '📁'}</div>
+      <div style="font-weight:700;font-size:0.9rem;color:var(--text-primary)">${escHtml(d.display)}</div>
+      <div style="font-size:0.72rem;color:var(--text-muted)">${d.accessible ? `${d.free_display} free / ${d.total_display}` : 'Inaccessible'}</div>
+      ${d.accessible && d.total_bytes > 0 ? `
+        <div class="usage-bar">
+          <div class="usage-fill" style="width:${usedPct}%;background:${usedPct>90?'var(--red)':usedPct>70?'var(--amber)':'linear-gradient(90deg,var(--cyan),var(--purple))'}"></div>
+        </div>
+        <div style="font-size:0.68rem;color:var(--text-muted)">${usedPct}% used</div>` : ''}
+    </div>`;
+}
+
+async function explorerNavigate(path) {
+  explorerPath = path;
+  const content = document.getElementById('exp-content');
+  const backBtn = document.getElementById('exp-back-btn');
+  if (backBtn) { backBtn.disabled = false; backBtn.style.opacity = '1'; }
+  if (content) content.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:32px">Loading...</div>`;
+
+  try {
+    const data = await api('/browse?path=' + encodeURIComponent(path));
+    updateExpBreadcrumb(data.path, data.display);
+    const items = data.items.filter(i => !i.hidden);
+
+    if (content) {
+      content.innerHTML = items.length === 0
+        ? `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.85rem;">Empty directory</div>`
+        : `<div>${items.map(i => explorerItemRow(i)).join('')}</div>`;
+    }
+  } catch (e) {
+    if (content) content.innerHTML = `<div style="color:var(--red);text-align:center;padding:32px">${escHtml(e.message)}</div>`;
+  }
+}
+
+function explorerItemRow(item) {
+  const icon = item.type === 'dir' ? '📁' : getFileIcon(item.name);
+  const onclick = item.type === 'dir' && !item.inaccessible
+    ? `onclick="explorerNavigate('${item.path.replace(/'/g, "\\'")}')"`
+    : '';
+  return `
+    <div class="browser-item ${item.type}" ${onclick} style="${item.type!=='dir'?'cursor:default':''}${item.inaccessible?'opacity:0.4;cursor:not-allowed':''}">
+      <span style="font-size:1rem;flex-shrink:0">${icon}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.85rem">${escHtml(item.name)}</span>
+      ${item.size_display ? `<span style="font-size:0.75rem;color:var(--text-muted);flex-shrink:0">${item.size_display}</span>` : ''}
+      ${item.modified ? `<span style="font-size:0.72rem;color:var(--text-muted);flex-shrink:0;min-width:80px;text-align:right">${new Date(item.modified).toLocaleDateString()}</span>` : ''}
+    </div>`;
+}
+
+function updateExpBreadcrumb(path, display) {
+  const bc = document.getElementById('exp-breadcrumb');
+  if (!bc) return;
+  bc.innerHTML = buildBreadcrumbHtml(path, display, (p) => `explorerNavigate('${p.replace(/'/g, "\\'")}')`);
+}
+
+function explorerGoUp() {
+  if (!explorerPath) return;
+  // Find parent
+  const parts = explorerPath.split('/').filter(Boolean);
+  if (parts.length <= 2 && explorerPath.startsWith('/mnt/drives/')) {
+    explorerShowDrives();
+  } else {
+    const parent = '/' + parts.slice(0, -1).join('/');
+    explorerNavigate(parent);
+  }
+}
+
+function explorerRefresh() {
+  if (explorerPath) explorerNavigate(explorerPath);
+  else explorerShowDrives();
+}
+
+function explorerGoHome() {
+  explorerShowDrives();
+}
+
+function getFileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  if (['jpg','jpeg','png','gif','bmp','webp','heic','tiff'].includes(ext)) return '🖼';
+  if (['mp4','mkv','avi','mov','wmv','m4v','flv'].includes(ext)) return '🎬';
+  if (['mp3','flac','wav','aac','ogg','m4a'].includes(ext)) return '🎵';
+  if (['pdf','doc','docx','txt','xlsx','csv'].includes(ext)) return '📄';
+  if (['zip','rar','7z','tar','gz'].includes(ext)) return '📦';
+  return '📎';
+}
+
+function buildBreadcrumbHtml(path, display, onclickFn) {
+  // Build segments from path
+  const DRIVES_DIR = '/mnt/drives';
+  let segments = [];
+
+  if (path.startsWith(DRIVES_DIR)) {
+    const rest = path.slice(DRIVES_DIR.length + 1);
+    const parts = rest.split('/').filter(Boolean);
+    let current = DRIVES_DIR;
+    parts.forEach((part, i) => {
+      current += '/' + part;
+      const captured = current;
+      const label = i === 0 ? (part.toUpperCase() + ':\\') : part;
+      segments.push({ label, path: captured });
+    });
+  } else {
+    const parts = path.split('/').filter(Boolean);
+    let current = '';
+    parts.forEach(part => {
+      current += '/' + part;
+      const captured = current;
+      segments.push({ label: part, path: captured });
+    });
+  }
+
+  if (segments.length === 0) {
+    return `<span style="color:var(--text-muted);font-size:0.8rem">Drives</span>`;
+  }
+
+  return segments.map((seg, i) => {
+    const isLast = i === segments.length - 1;
+    const onclick = isLast ? '' : `onclick="${onclickFn(seg.path)}"`;
+    return `${i > 0 ? '<span class="breadcrumb-sep">›</span>' : ''}
+      <span class="breadcrumb-item${isLast ? '" style="color:var(--text-primary);cursor:default' : ''}" ${onclick}>${escHtml(seg.label)}</span>`;
+  }).join('');
+}
+
+// =====================================================================
+// JOBS TAB
+// =====================================================================
+async function renderJobs() {
+  const el = document.getElementById('tab-jobs');
+  el.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:40px">Loading...</div>`;
+
+  try {
+    const jobs = await api('/jobs?limit=100');
+    state.jobs = jobs;
+    renderJobsUI(jobs);
+  } catch (e) {
+    el.innerHTML = `<div style="color:var(--red);text-align:center;padding:40px">${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderJobsUI(jobs) {
+  const el = document.getElementById('tab-jobs');
+  const active = jobs.filter(j => j.status === 'running' || j.status === 'pending');
+  const history = jobs.filter(j => j.status === 'completed' || j.status === 'failed' || j.status === 'cancelled');
+
+  // Filter pills state
+  const filters = ['all', 'completed', 'failed', 'cancelled'];
+  const filterHtml = filters.map(f => `
+    <button class="pill ${state.activeJobFilter === f || (f==='all' && !state.activeJobFilter) ? 'pill-running' : 'pill-pending'}"
+      style="cursor:pointer;margin-right:4px;" onclick="setJobFilter('${f}')">${f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}</button>`).join('');
+
+  const filteredHistory = state.activeJobFilter && state.activeJobFilter !== 'all'
+    ? history.filter(j => j.status === state.activeJobFilter)
+    : history;
+
+  el.innerHTML = `
+    <div class="fade-in">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+        <div>
+          <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 4px;">Jobs</h1>
+          <p style="color:var(--text-secondary);font-size:0.85rem;margin:0;">${active.length} active, ${history.length} in history</p>
+        </div>
+        <button class="btn-secondary btn-sm" onclick="renderJobs()">↺ Refresh</button>
+      </div>
+
+      ${active.length > 0 ? `
+        <div style="margin-bottom:28px;">
+          <div class="section-header">Active Jobs</div>
+          <div id="active-jobs-list" style="display:flex;flex-direction:column;gap:16px;">
+            ${active.map(j => activeJobCard(j)).join('')}
+          </div>
+        </div>` : ''}
+
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="section-header" style="margin-bottom:0">Job History</div>
+          <div>${filterHtml}</div>
+        </div>
+        ${filteredHistory.length === 0 ? `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.85rem;">No jobs in history</div>` :
+          `<div style="display:flex;flex-direction:column;gap:8px;" id="history-jobs-list">${filteredHistory.map(j => historyJobRow(j)).join('')}</div>`}
+      </div>
+    </div>`;
+
+  // Connect WebSockets for active jobs
+  active.forEach(j => {
+    if (!state.jobWS[j.id]) {
+      connectJobWS(j.id);
+    }
+  });
+}
+
+function setJobFilter(f) {
+  state.activeJobFilter = f === 'all' ? null : f;
+  renderJobs();
+}
+
+function activeJobCard(job) {
+  const stats = job.stats || {};
+  const phase = stats.phase || 'scanning';
+  const phases = ['scanning', 'processing', 'complete'];
+
+  const phaseDots = phases.map(p => {
+    let cls = 'phase-dot';
+    if (p === phase) cls += ' active';
+    else if (phases.indexOf(p) < phases.indexOf(phase) || phase === 'complete') cls += ' done';
+    if (phase === 'failed' && p === 'complete') cls = 'phase-dot failed';
+    return `<div class="${cls}" title="${p}"></div>`;
+  }).join(`<div style="flex:1;height:1px;background:rgba(255,255,255,0.1);max-width:30px"></div>`);
+
+  return `
+    <div class="card job-active-card card-glow-cyan" style="padding:20px;" id="job-card-${job.id}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">
+        <div>
+          <div style="font-weight:600;font-size:0.95rem;margin-bottom:4px;">${SCRIPT_LABELS[job.script] || job.script}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted)">Started ${relativeTime(job.created_at)} · ID: ${job.id.slice(0,8)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${statusPill(job.status)}
+          ${job.status === 'running' || job.status === 'pending' ? `<button class="btn-danger btn-sm" onclick="cancelJob('${job.id}')">Cancel</button>` : ''}
+        </div>
+      </div>
+
+      <!-- Phase indicator -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <div class="phase-steps">${phaseDots}</div>
+        <span style="font-size:0.75rem;color:var(--text-secondary);text-transform:capitalize">${phase}</span>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-bar ${phase !== 'complete' ? 'progress-indeterminate' : ''}" style="margin-bottom:14px;">
+        <div class="progress-fill" style="${phase === 'complete' ? 'width:100%;background:var(--green)' : ''}"></div>
+      </div>
+
+      <!-- Stats grid -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;" id="stats-${job.id}">
+        ${jobStatMini('Scanned', stats.scanned || 0, 'var(--cyan)')}
+        ${jobStatMini('Processed', stats.processed || 0, 'var(--purple)')}
+        ${jobStatMini('Moved', stats.moved || 0, 'var(--green)')}
+        ${jobStatMini('Errors', stats.errors || 0, stats.errors > 0 ? 'var(--red)' : 'var(--text-muted)')}
+      </div>
+
+      <!-- Current file -->
+      <div id="current-file-${job.id}" style="font-size:0.72rem;color:var(--text-muted);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:10px;min-height:14px;">
+        ${stats.current_file ? `→ ${escHtml(stats.current_file)}` : ''}
+      </div>
+
+      <!-- Live log -->
+      <div class="live-log" id="live-log-${job.id}">
+        ${(state.jobLogs[job.id] || []).map(l => `<div class="log-line ${l.level}"><span style="color:var(--text-muted)">${l.timestamp.slice(11,19)}</span> ${escHtml(l.message)}</div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function jobStatMini(label, value, color) {
+  return `
+    <div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:1.1rem;font-weight:700;color:${color}">${value}</div>
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">${label}</div>
+    </div>`;
+}
+
+function historyJobRow(job) {
+  const stats = job.stats || {};
+  return `
+    <div style="padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;" id="history-job-${job.id}">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.85rem;font-weight:500;margin-bottom:2px;">${SCRIPT_LABELS[job.script] || job.script}</div>
+          <div style="font-size:0.72rem;color:var(--text-muted);">${relativeTime(job.created_at)}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;font-size:0.75rem;color:var(--text-muted);">
+          ${stats.moved > 0 ? `<span style="color:var(--green)">${stats.moved} moved</span>` : ''}
+          ${stats.errors > 0 ? `<span style="color:var(--red)">${stats.errors} err</span>` : ''}
+        </div>
+        ${statusPill(job.status)}
+        <button class="btn-icon btn-sm" onclick="toggleHistoryLogs('${job.id}')">View Logs</button>
+      </div>
+      <div id="history-logs-${job.id}" class="hidden" style="margin-top:10px;"></div>
+    </div>`;
+}
+
+async function toggleHistoryLogs(jobId) {
+  const el = document.getElementById('history-logs-' + jobId);
+  if (!el) return;
+  if (!el.classList.contains('hidden')) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.classList.remove('hidden');
+  el.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;padding:8px">Loading logs...</div>`;
+  try {
+    const logs = await api('/logs?job_id=' + jobId + '&limit=200');
+    if (logs.length === 0) {
+      el.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;padding:8px">No logs found</div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="live-log" style="height:200px;">
+        ${logs.reverse().map(l => `<div class="log-line ${l.level}"><span style="color:var(--text-muted)">${l.timestamp.slice(11,19)}</span> <span class="level-${l.level}">[${l.level}]</span> ${escHtml(l.message)}</div>`).join('')}
+      </div>`;
+    el.querySelector('.live-log').scrollTop = 99999;
+  } catch (e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:0.8rem;padding:8px">${escHtml(e.message)}</div>`;
+  }
+}
+
+async function cancelJob(jobId) {
+  try {
+    await api('/jobs/' + jobId, 'DELETE');
+    toast('Job cancelled', 'info');
+    setTimeout(renderJobs, 1000);
+  } catch (e) {
+    toast('Failed to cancel: ' + e.message, 'error');
+  }
+}
+
+// =====================================================================
+// JOB WEBSOCKET
+// =====================================================================
+function connectJobWS(jobId) {
+  if (state.jobWS[jobId]) return;
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${protocol}//${location.host}/ws/${jobId}`);
+
+  if (!state.jobLogs[jobId]) state.jobLogs[jobId] = [];
+  if (!state.jobStats[jobId]) state.jobStats[jobId] = {};
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'ping') return;
+
+    if (msg.type === 'init') {
+      if (msg.job && msg.job.stats) {
+        state.jobStats[jobId] = msg.job.stats;
+      }
+    }
+
+    if (msg.type === 'log') {
+      state.jobLogs[jobId].push(msg);
+      if (state.jobLogs[jobId].length > 200) state.jobLogs[jobId].shift();
+      appendLiveLog(jobId, msg);
+    }
+
+    if (msg.type === 'stats') {
+      state.jobStats[jobId] = msg;
+      updateJobStatsUI(jobId, msg);
+    }
+
+    if (msg.type === 'status') {
+      updateJobStatusUI(jobId, msg);
+    }
+
+    if (msg.type === 'done') {
+      ws.close();
+      delete state.jobWS[jobId];
+      setTimeout(renderJobs, 500);
+    }
+  };
+
+  ws.onerror = () => {
+    delete state.jobWS[jobId];
+  };
+
+  ws.onclose = () => {
+    delete state.jobWS[jobId];
+  };
+
+  state.jobWS[jobId] = ws;
+}
+
+function appendLiveLog(jobId, msg) {
+  const el = document.getElementById('live-log-' + jobId);
+  if (!el) return;
+  const line = document.createElement('div');
+  line.className = `log-line ${msg.level}`;
+  line.innerHTML = `<span style="color:var(--text-muted)">${msg.timestamp.slice(11,19)}</span> ${escHtml(msg.message)}`;
+  el.appendChild(line);
+  // Keep last 50 lines
+  while (el.children.length > 50) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateJobStatsUI(jobId, stats) {
+  const statsEl = document.getElementById('stats-' + jobId);
+  if (statsEl) {
+    statsEl.innerHTML = `
+      ${jobStatMini('Scanned', stats.scanned || 0, 'var(--cyan)')}
+      ${jobStatMini('Processed', stats.processed || 0, 'var(--purple)')}
+      ${jobStatMini('Moved', stats.moved || 0, 'var(--green)')}
+      ${jobStatMini('Errors', stats.errors || 0, (stats.errors||0) > 0 ? 'var(--red)' : 'var(--text-muted)')}`;
+  }
+  const cfEl = document.getElementById('current-file-' + jobId);
+  if (cfEl && stats.current_file) {
+    cfEl.textContent = '→ ' + stats.current_file;
+  }
+}
+
+function updateJobStatusUI(jobId, msg) {
+  // Update the nav tab indicator
+  renderNav();
+}
+
+// =====================================================================
+// LOGS TAB
+// =====================================================================
+let logsState = {
+  search: '',
+  level: null,
+  jobId: null,
+  offset: 0,
+  results: [],
+};
+
+function filterLogsForJob(jobId) {
+  logsState.jobId = jobId;
+  renderLogsUI();
+  const input = document.getElementById('log-jobid-input');
+  if (input) input.value = jobId;
+}
+
+async function renderLogs() {
+  const el = document.getElementById('tab-logs');
+  el.innerHTML = `
+    <div class="fade-in">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+        <div>
+          <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 4px;">Logs</h1>
+          <p style="color:var(--text-secondary);font-size:0.85rem;margin:0;">Job output and diagnostic logs</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:0.75rem;color:var(--text-muted)">Retain for</span>
+          <input type="number" id="log-retention-input" class="form-input" style="width:70px" value="30" min="1" max="365" />
+          <span style="font-size:0.75rem;color:var(--text-muted)">days</span>
+          <button class="btn-secondary btn-sm" onclick="saveLogRetention()">Save</button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="card" style="padding:14px 16px;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:10px;align-items:end;">
+          <div>
+            <label class="form-label">Search</label>
+            <input class="form-input" id="log-search-input" placeholder="Search messages..." value="${escHtml(logsState.search)}" oninput="logsState.search=this.value" onkeydown="if(event.key==='Enter')loadLogs()" />
+          </div>
+          <div>
+            <label class="form-label">Level</label>
+            <select class="form-input" id="log-level-select" onchange="logsState.level=this.value||null" style="width:110px">
+              <option value="">All</option>
+              <option value="INFO" ${logsState.level==='INFO'?'selected':''}>INFO</option>
+              <option value="WARN" ${logsState.level==='WARN'?'selected':''}>WARN</option>
+              <option value="ERROR" ${logsState.level==='ERROR'?'selected':''}>ERROR</option>
+              <option value="DRY" ${logsState.level==='DRY'?'selected':''}>DRY</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Job ID</label>
+            <input class="form-input" id="log-jobid-input" placeholder="Job ID (optional)" value="${escHtml(logsState.jobId||'')}" oninput="logsState.jobId=this.value||null" style="width:150px" />
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-primary btn-sm" onclick="loadLogs()">Search</button>
+            <button class="btn-secondary btn-sm" onclick="clearLogsFilter()">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div style="display:grid;grid-template-columns:140px 60px 130px 1fr;gap:0;padding:8px 16px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.2);">
+          <span style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Timestamp</span>
+          <span style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Level</span>
+          <span style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Script</span>
+          <span style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Message</span>
+        </div>
+        <div id="log-table-body" style="max-height:500px;overflow-y:auto;">
+          <div style="color:var(--text-muted);text-align:center;padding:32px;font-size:0.85rem">Loading logs...</div>
+        </div>
+        <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.1);">
+          <span id="log-count" style="font-size:0.78rem;color:var(--text-muted)"></span>
+          <button class="btn-secondary btn-sm" id="log-more-btn" onclick="loadMoreLogs()" style="display:none">Load More</button>
+        </div>
+      </div>
+    </div>`;
+
+  // Load retention setting
+  try {
+    const settings = await api('/settings');
+    const retInput = document.getElementById('log-retention-input');
+    if (retInput && settings.log_retention_days) retInput.value = settings.log_retention_days;
+  } catch {}
+
+  logsState.offset = 0;
+  logsState.results = [];
+  await loadLogs();
+}
+
+async function loadLogs() {
+  logsState.offset = 0;
+  logsState.results = [];
+  await fetchLogs(false);
+}
+
+async function loadMoreLogs() {
+  await fetchLogs(true);
+}
+
+async function fetchLogs(append) {
+  const body = document.getElementById('log-table-body');
+  if (!body) return;
+
+  if (!append) body.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:32px;font-size:0.85rem">Loading...</div>`;
+
+  let url = `/logs?limit=200&offset=${logsState.offset}`;
+  if (logsState.jobId) url += '&job_id=' + encodeURIComponent(logsState.jobId);
+  if (logsState.level) url += '&level=' + encodeURIComponent(logsState.level);
+  if (logsState.search) url += '&search=' + encodeURIComponent(logsState.search);
+
+  try {
+    const logs = await api(url);
+    if (!append) {
+      logsState.results = logs;
+    } else {
+      logsState.results = logsState.results.concat(logs);
+    }
+    logsState.offset += logs.length;
+
+    renderLogsUI();
+
+    const moreBtn = document.getElementById('log-more-btn');
+    if (moreBtn) moreBtn.style.display = logs.length === 200 ? '' : 'none';
+
+    const countEl = document.getElementById('log-count');
+    if (countEl) countEl.textContent = `${logsState.results.length} entries`;
+  } catch (e) {
+    if (body) body.innerHTML = `<div style="color:var(--red);text-align:center;padding:32px">${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderLogsUI() {
+  const body = document.getElementById('log-table-body');
+  if (!body) return;
+
+  if (logsState.results.length === 0) {
+    body.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:32px;font-size:0.85rem">No logs found</div>`;
+    return;
+  }
+
+  body.innerHTML = logsState.results.map(l => {
+    const ts = l.timestamp ? l.timestamp.slice(0, 19).replace('T', ' ') : '—';
+    const rowBg = l.level === 'ERROR' ? 'background:rgba(255,68,68,0.04)' : l.level === 'WARN' ? 'background:rgba(255,184,0,0.03)' : '';
+    const borderLeft = l.level === 'ERROR' ? 'border-left:2px solid var(--red)' : l.level === 'WARN' ? 'border-left:2px solid var(--amber)' : l.level === 'DRY' ? 'border-left:2px solid var(--purple)' : '';
+    return `
+      <div style="display:grid;grid-template-columns:140px 60px 130px 1fr;gap:0;padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.02);${rowBg};${borderLeft}">
+        <span style="font-size:0.72rem;color:var(--text-muted);font-family:monospace">${ts}</span>
+        <span class="level-${l.level}" style="font-size:0.72rem;font-weight:600">${l.level}</span>
+        <span style="font-size:0.72rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(SCRIPT_LABELS[l.script]||l.script||'—')}</span>
+        <span style="font-size:0.72rem;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(l.message)}</span>
+      </div>`;
+  }).join('');
+}
+
+function clearLogsFilter() {
+  logsState = { search: '', level: null, jobId: null, offset: 0, results: [] };
+  renderLogs();
+}
+
+async function saveLogRetention() {
+  const val = document.getElementById('log-retention-input')?.value;
+  if (!val) return;
+  try {
+    await api('/settings/log_retention_days', 'PUT', { value: val });
+    toast('Retention setting saved', 'success');
+  } catch (e) {
+    toast('Failed to save: ' + e.message, 'error');
+  }
+}
+
+// =====================================================================
+// SETTINGS TAB
+// =====================================================================
+async function renderSettings() {
+  const el = document.getElementById('tab-settings');
+  el.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:40px">Loading settings...</div>`;
+
+  try {
+    const settings = await api('/settings');
+    let extraPaths = [];
+    try { extraPaths = JSON.parse(settings.extra_paths || '[]'); } catch {}
+
+    el.innerHTML = `
+      <div class="fade-in">
+        <div style="margin-bottom:24px;">
+          <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 4px;">Settings</h1>
+          <p style="color:var(--text-secondary);font-size:0.85rem;margin:0;">Application configuration</p>
+        </div>
+
+        <div class="card" style="padding:24px;max-width:600px;">
+          <div class="section-header">General</div>
+
+          <div class="form-group">
+            <label class="form-label">Log Retention (days)</label>
+            <input type="number" class="form-input" id="s-retention" value="${settings.log_retention_days||30}" min="1" max="365" style="max-width:120px" />
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">Logs older than this will be automatically deleted</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Max Jobs to Keep</label>
+            <input type="number" class="form-input" id="s-maxjobs" value="${settings.max_jobs||500}" min="10" max="10000" style="max-width:120px" />
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">Oldest jobs are deleted beyond this limit</div>
+          </div>
+
+          <div class="form-group">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
+              <div>
+                <label class="form-label" style="margin-bottom:4px">Security Mode</label>
+                <div style="font-size:0.72rem;color:var(--text-muted)">When enabled, only configured paths are accessible via the file browser</div>
+              </div>
+              <label class="toggle" style="flex-shrink:0;margin-top:4px">
+                <input type="checkbox" id="s-security" ${settings.security_mode==='true'?'checked':''} />
+                <div class="toggle-track"><div class="toggle-thumb"></div></div>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Extra Accessible Paths</label>
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px">Additional paths to expose in the file browser (used with security mode)</div>
+            <div id="s-extra-paths" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
+              ${extraPaths.map((p, i) => `
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <input class="form-input" value="${escHtml(p)}" id="s-ep-${i}" />
+                  <button class="btn-icon btn-sm" onclick="this.parentElement.remove()">✕</button>
+                </div>`).join('')}
+            </div>
+            <button class="btn-secondary btn-sm" onclick="addExtraPath()">+ Add Path</button>
+          </div>
+
+          <div style="display:flex;gap:10px;margin-top:8px;">
+            <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+            <button class="btn-secondary" onclick="runCleanup()">Run Cleanup Now</button>
+          </div>
+        </div>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<div style="color:var(--red);text-align:center;padding:40px">${escHtml(e.message)}</div>`;
+  }
+}
+
+function addExtraPath() {
+  const container = document.getElementById('s-extra-paths');
+  if (!container) return;
+  const idx = container.children.length;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  div.innerHTML = `<input class="form-input" id="s-ep-${idx}" placeholder="/mnt/drives/d" /><button class="btn-icon btn-sm" onclick="this.parentElement.remove()">✕</button>`;
+  container.appendChild(div);
+}
+
+async function saveSettings() {
+  const retention = document.getElementById('s-retention')?.value;
+  const maxJobs = document.getElementById('s-maxjobs')?.value;
+  const security = document.getElementById('s-security')?.checked;
+  const epContainer = document.getElementById('s-extra-paths');
+  const extraPaths = epContainer
+    ? Array.from(epContainer.querySelectorAll('input')).map(i => i.value.trim()).filter(Boolean)
+    : [];
+
+  try {
+    await api('/settings/log_retention_days', 'PUT', { value: retention });
+    await api('/settings/max_jobs', 'PUT', { value: maxJobs });
+    await api('/settings/security_mode', 'PUT', { value: security ? 'true' : 'false' });
+    await api('/settings/extra_paths', 'PUT', { value: JSON.stringify(extraPaths) });
+    toast('Settings saved', 'success');
+  } catch (e) {
+    toast('Failed to save settings: ' + e.message, 'error');
+  }
+}
+
+async function runCleanup() {
+  try {
+    await api('/cleanup', 'POST');
+    toast('Cleanup completed', 'success');
+  } catch (e) {
+    toast('Cleanup failed: ' + e.message, 'error');
+  }
+}
+
+// =====================================================================
+// FILE BROWSER MODAL
+// =====================================================================
+let browserDrives = [];
+
+function openBrowser(targetInputId, mode = null) {
+  state.browserTarget = targetInputId;
+  state.browserMode = mode; // null = normal, 'df-add-source' = add to df sources
+  state.browserPath = null;
+
+  const modal = document.getElementById('browser-modal');
+  const title = document.getElementById('browser-title');
+  modal.classList.remove('hidden');
+
+  if (mode === 'df-add-source') {
+    title.textContent = 'Select Source Directory';
+  } else {
+    title.textContent = 'Browse — Select Folder';
+  }
+
+  document.getElementById('browser-selected-path').textContent = '—';
+  browserShowDrives();
+}
+
+function closeBrowser() {
+  document.getElementById('browser-modal').classList.add('hidden');
+  state.browserTarget = null;
+  state.browserPath = null;
+  state.browserMode = null;
+}
+
+async function browserShowDrives() {
+  state.browserPath = null;
+  document.getElementById('browser-breadcrumb').innerHTML = `<span style="color:var(--text-muted);font-size:0.8rem">Drives</span>`;
+  document.getElementById('browser-selected-path').textContent = '—';
+
+  const content = document.getElementById('browser-content');
+  content.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:32px;font-size:0.85rem">Loading drives...</div>`;
+
+  try {
+    const drives = await api('/drives');
+    browserDrives = drives;
+    if (drives.length === 0) {
+      content.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted)">No drives found. Run setup.ps1 to mount drives.</div>`;
+      return;
+    }
+    content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:12px;">${drives.map(d => browserDriveCard(d)).join('')}</div>`;
+  } catch (e) {
+    content.innerHTML = `<div style="color:var(--red);text-align:center;padding:32px">${escHtml(e.message)}</div>`;
+  }
+}
+
+function browserDriveCard(d) {
+  const usedPct = d.total_bytes > 0 ? Math.round((d.total_bytes - d.free_bytes) / d.total_bytes * 100) : 0;
+  return `
+    <div class="drive-card ${d.accessible ? '' : 'inaccessible'}" onclick="${d.accessible ? `browserNavigate('${d.path}')` : ''}">
+      <div style="font-size:1.3rem">${d.letter ? '💾' : '📁'}</div>
+      <div style="font-weight:700;font-size:0.88rem">${escHtml(d.display)}</div>
+      <div style="font-size:0.7rem;color:var(--text-muted)">${d.accessible ? `${d.free_display} free` : 'Inaccessible'}</div>
+      ${d.accessible && d.total_bytes > 0 ? `
+        <div class="usage-bar"><div class="usage-fill" style="width:${usedPct}%"></div></div>` : ''}
+    </div>`;
+}
+
+async function browserNavigate(path) {
+  state.browserPath = path;
+  document.getElementById('browser-selected-path').textContent = containerToDisplay(path);
+
+  const content = document.getElementById('browser-content');
+  content.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:32px;font-size:0.85rem">Loading...</div>`;
+
+  try {
+    const data = await api('/browse?path=' + encodeURIComponent(path));
+    updateBrowserBreadcrumb(data.path);
+
+    const dirs = data.items.filter(i => i.type === 'dir' && !i.hidden);
+
+    content.innerHTML = `
+      <div>
+        ${data.parent ? `<div class="browser-item dir" onclick="browserNavigate('${data.parent.replace(/'/g, "\\'")}')">
+          <span class="dir-icon">↑</span>
+          <span style="color:var(--text-muted);font-size:0.82rem">..</span>
+        </div>` : ''}
+        ${dirs.length === 0 && data.items.filter(i=>!i.hidden).length === 0
+          ? `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.82rem">Empty directory</div>`
+          : data.items.filter(i=>!i.hidden).map(i => {
+              const icon = i.type === 'dir' ? '<span class="dir-icon">📁</span>' : `<span class="file-icon">${getFileIcon(i.name)}</span>`;
+              const onclick = i.type === 'dir' && !i.inaccessible ? `onclick="browserNavigate('${i.path.replace(/'/g, "\\'")}')"` : '';
+              const style = i.type !== 'dir' ? 'cursor:default;' : '';
+              return `
+                <div class="browser-item ${i.type}" ${onclick} style="${style}${i.inaccessible?'opacity:0.4;cursor:not-allowed':''}">
+                  ${icon}
+                  <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(i.name)}</span>
+                  ${i.size_display ? `<span style="font-size:0.72rem;color:var(--text-muted);flex-shrink:0">${i.size_display}</span>` : ''}
+                </div>`;
+            }).join('')}
+      </div>`;
+  } catch (e) {
+    content.innerHTML = `<div style="color:var(--red);text-align:center;padding:32px">${escHtml(e.message)}</div>`;
+  }
+}
+
+function updateBrowserBreadcrumb(path) {
+  const bc = document.getElementById('browser-breadcrumb');
+  if (!bc) return;
+  bc.innerHTML = `<span class="breadcrumb-item" onclick="browserShowDrives()">Drives</span>` +
+    buildBreadcrumbHtml(path, containerToDisplay(path), (p) => `browserNavigate('${p.replace(/'/g, "\\'")}')`);
+}
+
+function browserSelectFolder() {
+  const path = state.browserPath;
+  if (!path) {
+    toast('Please navigate to a folder first', 'error');
+    return;
+  }
+
+  if (state.browserMode === 'df-add-source') {
+    if (!state.dfSources.includes(path)) {
+      state.dfSources.push(path);
+      // Re-render the sources list
+      const sourcesList = document.getElementById('df-sources-list');
+      if (sourcesList) {
+        sourcesList.innerHTML = state.dfSources.map((s, i) => `
+          <div class="source-item">
+            <span style="font-size:0.7rem;font-weight:700;color:var(--purple);min-width:20px">P${i+1}</span>
+            <span style="flex:1;font-size:0.82rem;font-family:monospace;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(containerToDisplay(s))}</span>
+            <button class="btn-icon btn-sm" onclick="dfRemoveSource(${i})">✕</button>
+          </div>`).join('');
+      }
+      toast('Source added', 'success');
+    } else {
+      toast('Source already added', 'info');
+    }
+  } else if (state.browserTarget) {
+    const input = document.getElementById(state.browserTarget);
+    if (input) input.value = path;
+  }
+
+  closeBrowser();
+}
+
+// =====================================================================
+// POLLING
+// =====================================================================
+let pollInterval = null;
+
+function startPolling() {
+  if (pollInterval) return;
+  pollInterval = setInterval(async () => {
+    try {
+      const jobs = await api('/jobs?limit=100');
+      state.jobs = jobs;
+      // Update nav indicators
+      renderNav();
+      // If on dashboard, refresh
+      if (state.activeTab === 'dashboard') renderDashboard();
+      // Connect WS for any new running jobs
+      jobs.filter(j => j.status === 'running' || j.status === 'pending').forEach(j => {
+        if (!state.jobWS[j.id]) connectJobWS(j.id);
+      });
+    } catch {}
+  }, 5000);
+}
+
+// =====================================================================
+// INIT
+// =====================================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  // Render navigation
+  renderNav();
+
+  // Check initial saved tab
+  const savedTab = loadLS('activeTab', 'dashboard');
+  state.activeTab = savedTab;
+
+  // Show the correct tab
+  TABS.forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) {
+      if (t === savedTab) el.classList.remove('hidden');
+      else el.classList.add('hidden');
+    }
+  });
+
+  renderNav();
+
+  // Check API status
+  await checkApiStatus();
+
+  // Render initial tab
+  renderTab(state.activeTab);
+
+  // Start polling
+  startPolling();
+
+  // Re-check API every 30s
+  setInterval(checkApiStatus, 30000);
+
+  // Keyboard support for browser modal
+  document.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('browser-modal');
+    if (!modal.classList.contains('hidden')) {
+      if (e.key === 'Escape') closeBrowser();
+      if (e.key === 'Enter') browserSelectFolder();
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (state.browserPath) {
+          const parts = state.browserPath.split('/').filter(Boolean);
+          if (parts.length <= 2) browserShowDrives();
+          else browserNavigate('/' + parts.slice(0, -1).join('/'));
+        }
+      }
+    }
+  });
+});
+</script>
+</body>
+</html>

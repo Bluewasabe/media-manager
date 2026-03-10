@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    volumes:
+      - ./data:/data
+      - ./backend/scripts:/app/scripts
+    environment:
+      - DATA_DIR=/data
+      - SCRIPTS_DIR=/app/scripts
+      - DRIVES_DIR=/mnt/drives
+    networks:
+      - jarvis-net
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "45681:80"
+    depends_on:
+      - backend
+    networks:
+      - jarvis-net
+    restart: unless-stopped
+
+networks:
+  jarvis-net:
+    external: true
