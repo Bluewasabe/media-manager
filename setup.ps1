@@ -60,7 +60,7 @@ foreach ($drive in $drives) {
                 switch ($wmiDrive.DriveType) {
                     2 { $driveType = "Removable" }
                     5 { $driveType = "CD-ROM" }
-                    # 3 = Local (also used by iSCSI — override via drives-overrides.json if needed)
+                    # 3 = Local (also used by iSCSI - override via drives-overrides.json if needed)
                     # 4 = Network (WMI catches standard mapped drives; DisplayRoot catches the rest)
                 }
                 $volumeName = if ($wmiDrive.VolumeName) { $wmiDrive.VolumeName } else { "" }
