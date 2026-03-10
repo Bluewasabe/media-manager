@@ -26,26 +26,53 @@ foreach ($drive in $drives) {
 Write-Host ""
 Write-Host "Generating docker-compose.override.yml..." -ForegroundColor Cyan
 
-# Detect drive types via WMI once, build metadata map
+# Load manual overrides if they exist (user-editable, wins over auto-detection)
+$dataDir = Join-Path $PSScriptRoot "data"
+if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
+$overridesPath = Join-Path $dataDir "drives-overrides.json"
+$overrides = @{}
+if (Test-Path $overridesPath) {
+    try {
+        $raw = Get-Content $overridesPath -Raw | ConvertFrom-Json
+        $raw.PSObject.Properties | ForEach-Object { $overrides[$_.Name.ToLower()] = $_.Value }
+        Write-Host "  Loaded overrides from drives-overrides.json" -ForegroundColor Gray
+    } catch {
+        Write-Host "  WARNING: Could not parse drives-overrides.json — skipping overrides" -ForegroundColor Yellow
+    }
+}
+
+# Detect drive types, build metadata map
 $driveMeta = @{}
 foreach ($drive in $drives) {
     $letter = $drive.Name.ToLower()
-    $driveType = "Local"
-    try {
-        $wmiDrive = Get-WmiObject -Query "SELECT DriveType,VolumeName FROM Win32_LogicalDisk WHERE DeviceID='$($drive.Name):'" -ErrorAction SilentlyContinue
-        if ($wmiDrive) {
-            switch ($wmiDrive.DriveType) {
-                2 { $driveType = "Removable" }
-                3 { $driveType = "Local" }
-                4 { $driveType = "Network" }
-                5 { $driveType = "CD-ROM" }
-                default { $driveType = "Unknown" }
-            }
-        }
-        $volumeName = if ($wmiDrive -and $wmiDrive.VolumeName) { $wmiDrive.VolumeName } else { "" }
-    } catch {
+
+    # Priority 1: DisplayRoot is set → this is an SMB-mapped network drive
+    if (-not [string]::IsNullOrEmpty($drive.DisplayRoot) -and $drive.DisplayRoot -match '^\\\\') {
+        $driveType  = "Network"
+        $volumeName = $drive.DisplayRoot   # show UNC path as subtitle
+    } else {
+        # Priority 2: WMI for Removable / CD-ROM (type 3 = Local is unreliable for iSCSI/NAS)
+        $driveType  = "Local"
         $volumeName = ""
+        try {
+            $wmiDrive = Get-WmiObject -Query "SELECT DriveType,VolumeName FROM Win32_LogicalDisk WHERE DeviceID='$($drive.Name):'" -ErrorAction SilentlyContinue
+            if ($wmiDrive) {
+                switch ($wmiDrive.DriveType) {
+                    2 { $driveType = "Removable" }
+                    5 { $driveType = "CD-ROM" }
+                    # 3 = Local (also used by iSCSI — override via drives-overrides.json if needed)
+                    # 4 = Network (WMI catches standard mapped drives; DisplayRoot catches the rest)
+                }
+                $volumeName = if ($wmiDrive.VolumeName) { $wmiDrive.VolumeName } else { "" }
+            }
+        } catch {}
     }
+
+    # Priority 3: Manual override wins over everything
+    if ($overrides.ContainsKey($letter)) {
+        $driveType = $overrides[$letter]
+    }
+
     $driveMeta[$letter] = @{
         type        = $driveType
         volume_name = $volumeName
@@ -53,9 +80,22 @@ foreach ($drive in $drives) {
     }
 }
 
+# Print what was detected so misclassifications are visible
+Write-Host "Drive type detection:" -ForegroundColor Cyan
+foreach ($drive in $drives) {
+    $letter = $drive.Name.ToLower()
+    $m = $driveMeta[$letter]
+    $overrideFlag = if ($overrides.ContainsKey($letter)) { " [override]" } else { "" }
+    $color = switch ($m.type) { "Network" { "Cyan" } "Removable" { "Yellow" } "CD-ROM" { "Yellow" } default { "White" } }
+    Write-Host "  $($drive.Name): $($m.type)$overrideFlag  $($m.volume_name)" -ForegroundColor $color
+}
+Write-Host ""
+Write-Host "  If a drive type is wrong, create data\drives-overrides.json:" -ForegroundColor Gray
+Write-Host '  { "m": "Network", "s": "Network" }' -ForegroundColor Gray
+Write-Host "  Then re-run this script." -ForegroundColor Gray
+Write-Host ""
+
 # Write drives-meta.json so the backend can expose drive types to the UI
-$dataDir = Join-Path $PSScriptRoot "data"
-if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
 $metaPath = Join-Path $dataDir "drives-meta.json"
 $driveMeta | ConvertTo-Json -Depth 3 | Set-Content -Path $metaPath -Encoding UTF8
 Write-Host "  Wrote drive metadata: $metaPath" -ForegroundColor Gray
