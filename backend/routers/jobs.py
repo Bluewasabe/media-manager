@@ -25,6 +25,7 @@ def build_args(script: str, config: dict) -> tuple[list[str], bool]:
             args.append(config['path'])
         if config.get('execute'):
             args.append('--execute')
+            needs_conf = True
 
     elif script == 'disk_drill':
         args = ['python', '/app/scripts/disk_drill_organizer.py']
@@ -58,7 +59,7 @@ def build_args(script: str, config: dict) -> tuple[list[str], bool]:
             args.append('--execute')
         action = config.get('action', 'archive')
         args += ['--action', action]
-        if action == 'delete':
+        if config.get('execute') and action in ('delete', 'archive'):
             needs_conf = True
         if action == 'archive' and config.get('archive'):
             args += ['--archive', config['archive']]

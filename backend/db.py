@@ -201,6 +201,31 @@ async def set_setting(key: str, value: str):
     await db.commit()
 
 
+async def interrupt_stale_jobs() -> int:
+    """On startup, mark any jobs still in running/pending from a crashed previous instance."""
+    db = await get_db()
+    now = datetime.utcnow().isoformat()
+    cursor = await db.execute("SELECT id FROM jobs WHERE status IN ('running', 'pending')")
+    rows = await cursor.fetchall()
+    job_ids = [row['id'] for row in rows]
+    if not job_ids:
+        return 0
+    placeholders = ','.join('?' * len(job_ids))
+    await db.execute(
+        f"UPDATE jobs SET status='interrupted', updated_at=? WHERE id IN ({placeholders})",
+        [now] + job_ids
+    )
+    msg = ('Job interrupted — container restarted before this job completed. '
+           'Re-run with the same config to resume; already-processed files will be skipped.')
+    for job_id in job_ids:
+        await db.execute(
+            "INSERT INTO job_logs (job_id, timestamp, level, message) VALUES (?, ?, 'WARN', ?)",
+            (job_id, now, msg)
+        )
+    await db.commit()
+    return len(job_ids)
+
+
 async def cleanup_old_logs(retention_days: int):
     db = await get_db()
 
