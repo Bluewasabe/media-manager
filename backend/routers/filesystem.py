@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import FileResponse
 import os
 import json
 from pathlib import Path
@@ -158,3 +159,14 @@ async def browse(path: str = Query(...)):
         "parent":  parent,
         "items":   items,
     }
+
+
+@router.get("/file")
+async def serve_file(path: str = Query(...)):
+    abs_path = os.path.abspath(path)
+    allowed = [os.path.abspath(DRIVES_DIR), os.path.abspath(DATA_DIR)]
+    if not any(abs_path.startswith(a) for a in allowed):
+        raise HTTPException(403, "Access denied")
+    if not os.path.isfile(abs_path):
+        raise HTTPException(404, "File not found")
+    return FileResponse(abs_path)
