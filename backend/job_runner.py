@@ -27,9 +27,9 @@ def detect_phase(line: str, current: str) -> str:
     lower = line.lower()
     if any(w in lower for w in ['scanning', 'indexing', 'found', 'discovered', 'hashing', 'loading']):
         return 'scanning'
-    if any(w in lower for w in ['moving', 'copying', 'processing', 'organizing', 'archiving']):
+    if any(w in lower for w in ['moving', 'copying', 'processing', 'organizing', 'archiving', 'keeping', 'breakdown']):
         return 'processing'
-    if any(w in lower for w in ['complete', 'finished', 'done', 'summary', 'total:']):
+    if any(w in lower for w in ['complete', 'finished', 'done', 'summary', 'total:', 'dry run', 'report written']):
         return 'complete'
     return current or 'scanning'
 
@@ -37,8 +37,12 @@ def detect_phase(line: str, current: str) -> str:
 def extract_stats(line: str, stats: dict):
     patterns = [
         (r'(\d[\d,]*)\s+files?\s+(?:found|scanned|discovered)', 'scanned'),
+        (r'Found\s+(\d[\d,]*)\s+files', 'scanned'),          # DDO: "Found N files."
+        (r'scanned\s+(\d[\d,]*)/', 'scanned'),               # DDO: "... scanned N/total"
         (r'(\d[\d,]*)\s+(?:moved|archived)', 'moved'),
+        (r'(\d[\d,]*)\s+files?\s+(?:moved|copied)', 'moved'), # DDO: "N files moved/copied"
         (r'(\d[\d,]*)\s+(?:error|errors|failed)', 'errors'),
+        (r'\b(\d[\d,]*)\s+errors?\.', 'errors'),             # DDO: "N errors." from [DONE]
         (r'(\d[\d,]*)\s+(?:skipped|skip)', 'skipped'),
         (r'processing\s+(\d[\d,]*)', 'processed'),
         (r'(\d[\d,]*)\s+duplicate', 'processed'),

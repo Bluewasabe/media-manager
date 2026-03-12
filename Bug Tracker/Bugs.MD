@@ -11,6 +11,8 @@ See [CLAUDE.md](../CLAUDE.md) for the workflow.
 |----|---------|------|
 | 004 | Config options have no info bubbles/tooltips | Enhancement |
 | 005 | No time/quantity metrics shown during or after jobs | Enhancement |
+| 009 | DDO job stats always read 0 — extract_stats regex doesn't match DDO output format | Bug |
+| 010 | Log timestamps display in UTC instead of local time | Bug |
 
 ### 004 — Config options have no info bubbles/tooltips
 
@@ -59,9 +61,56 @@ The README even states "Hover over any option label to see what it does" — thi
 
 ---
 
+### 009 — DDO job stats always read 0 (extract_stats regex mismatch)
+
+**Reported:** During a Disk Drill Organizer job the SCANNED, PROCESSED, MOVED, and ERRORS counters all stay at 0 throughout the job. Phase also stays stuck on "Scanning" even after the scan completes.
+
+**Root cause:** The `extract_stats` and `detect_phase` functions in `job_runner.py` use regexes tuned for `media_organizer.py` output. DDO prints different formats that none of the patterns match:
+
+| What DDO actually prints | What the regex expects | Result |
+|--------------------------|------------------------|--------|
+| `Found 1234 files.` | `N files found/scanned` (reversed) | no match → SCANNED stays 0 |
+| `  ... scanned 1000/5000` | `N files scanned` | no match |
+| `[DONE] 500 files moved. 2 errors.` | `N moved` (no "files" between) | no match → MOVED stays 0 |
+| `Breakdown by destination folder:` | none of the phase keywords | phase stuck at "scanning" |
+| `  Videos/... 2 files` | none | no match |
+
+The `[DONE]` errors pattern (`\d+\s+errors`) would match DDO's `2 errors.` but only fires at job end, and MOVED is never captured at all.
+
+**Fix needed (`backend/job_runner.py`):**
+- Add DDO-specific patterns to `extract_stats`:
+  - `r'Found\s+(\d[\d,]*)\s+files'` → `scanned`
+  - `r'(\d[\d,]*)\s+files\s+(?:moved|copied)'` → `moved`
+  - `r'\.\s+(\d[\d,]*)\s+errors'` → `errors` (from `[DONE]` line)
+  - `r'\.\.\.\s+(\d[\d,]*)/(\d[\d,]*)$'` → `scanned` progress updates
+- Add `'breakdown'`, `'keeping'`, `'filtered'` to phase keywords to advance past scanning
+
+**Files to change:** `backend/job_runner.py`
+
+---
+
+### 010 — Log timestamps display in UTC instead of local time
+
+**Reported:** Timestamps shown in the live log stream and job history appear in Zulu/UTC time rather than the machine's local timezone (Eastern). e.g. `01:35:16` shows when local time is ~9:35 PM Eastern.
+
+**Root cause:** `job_runner.py` uses `datetime.utcnow().isoformat()` to generate timestamps, which stores UTC strings in the DB. The frontend displays them as-is with no timezone conversion.
+
+**Fix options:**
+- **Preferred — frontend conversion:** UTC storage is correct practice. Parse the ISO timestamp string in JS and call `.toLocaleTimeString()` (or similar) so timestamps render in the browser's local timezone. No backend change, no rebuild needed for backend.
+- **Alternative — store local time:** Switch `datetime.utcnow()` → `datetime.now()` in `job_runner.py`. Simpler but loses timezone awareness if the app ever runs on a server in a different timezone.
+
+**Recommended fix:** Frontend-only — convert UTC ISO strings to local time at display. Affects the live log stream (`appendLiveLog`), the "View Logs" panel, and any timestamp shown in job cards.
+
+**Files to change:** `frontend/index.html` (frontend conversion approach) or `backend/job_runner.py` (store local time approach) — requires rebuild either way.
+
+---
+
 ## In Review
 
-*(nothing currently in review)*
+| ID | Summary |
+|----|---------|
+| 009 | DDO job stats always read 0 — extract_stats regex mismatch |
+| 010 | Log timestamps display in UTC instead of local time |
 
 ---
 

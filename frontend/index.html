@@ -385,6 +385,18 @@ function formatSize(bytes) {
   return `${n.toFixed(1)} PB`;
 }
 
+function fmtLogTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso + 'Z').toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+}
+
+function fmtLogDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso + 'Z');
+  return d.toLocaleDateString([], {month:'2-digit', day:'2-digit', year:'numeric'}) + ' ' +
+         d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+}
+
 function relativeTime(iso) {
   if (!iso) return '—';
   const diff = Date.now() - new Date(iso + 'Z').getTime();
@@ -1322,7 +1334,7 @@ function activeJobCard(job) {
 
       <!-- Live log -->
       <div class="live-log" id="live-log-${job.id}">
-        ${(state.jobLogs[job.id] || []).map(l => `<div class="log-line level-${l.level}"><span style="color:var(--text-muted)">${l.timestamp.slice(11,19)}</span> ${escHtml(l.message)}</div>`).join('')}
+        ${(state.jobLogs[job.id] || []).map(l => `<div class="log-line level-${l.level}"><span style="color:var(--text-muted)">${fmtLogTime(l.timestamp)}</span> ${escHtml(l.message)}</div>`).join('')}
       </div>
     </div>`;
 }
@@ -1391,7 +1403,7 @@ async function toggleHistoryLogs(jobId) {
     }
     el.innerHTML = `
       <div class="live-log" style="height:200px;">
-        ${logs.reverse().map(l => `<div class="log-line ${l.level}"><span style="color:var(--text-muted)">${l.timestamp.slice(11,19)}</span> <span class="level-${l.level}">[${l.level}]</span> ${escHtml(l.message)}</div>`).join('')}
+        ${logs.reverse().map(l => `<div class="log-line ${l.level}"><span style="color:var(--text-muted)">${fmtLogTime(l.timestamp)}</span> <span class="level-${l.level}">[${l.level}]</span> ${escHtml(l.message)}</div>`).join('')}
       </div>`;
     el.querySelector('.live-log').scrollTop = 99999;
   } catch (e) {
@@ -1468,7 +1480,7 @@ function appendLiveLog(jobId, msg) {
   if (!el) return;
   const line = document.createElement('div');
   line.className = `log-line level-${msg.level}`;
-  line.innerHTML = `<span style="color:var(--text-muted)">${msg.timestamp.slice(11,19)}</span> ${escHtml(msg.message)}`;
+  line.innerHTML = `<span style="color:var(--text-muted)">${fmtLogTime(msg.timestamp)}</span> ${escHtml(msg.message)}`;
   el.appendChild(line);
   // Keep last 50 lines
   while (el.children.length > 50) el.removeChild(el.firstChild);
@@ -1640,7 +1652,7 @@ function renderLogsUI() {
   }
 
   body.innerHTML = logsState.results.map(l => {
-    const ts = l.timestamp ? l.timestamp.slice(0, 19).replace('T', ' ') : '—';
+    const ts = fmtLogDateTime(l.timestamp);
     const rowBg = l.level === 'ERROR' ? 'background:rgba(255,68,68,0.04)' : l.level === 'WARN' ? 'background:rgba(255,184,0,0.03)' : '';
     const borderLeft = l.level === 'ERROR' ? 'border-left:2px solid var(--red)' : l.level === 'WARN' ? 'border-left:2px solid var(--amber)' : l.level === 'DRY' ? 'border-left:2px solid var(--purple)' : '';
     return `
