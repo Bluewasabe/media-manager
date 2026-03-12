@@ -13,6 +13,7 @@ See [CLAUDE.md](../CLAUDE.md) for the workflow.
 | 005 | No time/quantity metrics shown during or after jobs | Enhancement |
 | 009 | DDO job stats always read 0 — extract_stats regex doesn't match DDO output format | Bug |
 | 010 | Log timestamps display in UTC instead of local time | Bug |
+| 011 | All scripts: logs and stats delayed — Python stdout buffering when piped | Bug |
 
 ### 004 — Config options have no info bubbles/tooltips
 
@@ -103,6 +104,16 @@ The `[DONE]` errors pattern (`\d+\s+errors`) would match DDO's `2 errors.` but o
 
 **Files to change:** `frontend/index.html` (frontend conversion approach) or `backend/job_runner.py` (store local time approach) — requires rebuild either way.
 
+### 011 — All scripts: logs and stats delayed (Python stdout buffering)
+
+**Reported:** During any job (DDO, Media Organizer, Duplicate Finder), the log pane stays blank and stats remain at 0 for an extended period after the job starts ("long pending"). Output eventually appears in a burst when Python's internal stdout buffer fills (~8 KB) rather than line-by-line.
+
+**Root cause:** When Python is run as a subprocess with `stdout=PIPE`, it switches from line-buffered to fully-buffered mode. The runner reads lines with `async for raw in proc.stdout` but no lines arrive until the buffer flushes, causing all stats and log updates to be delayed or arrive in a single burst at job end.
+
+**Fix applied:** Added `-u` (unbuffered) flag to all three `python` invocations in `build_args` in `backend/routers/jobs.py`. This forces Python to write stdout byte-by-byte (effectively line-by-line for print statements), so every output line reaches the runner and the WebSocket immediately.
+
+**Files changed:** `backend/routers/jobs.py`
+
 ---
 
 ## In Review
@@ -111,6 +122,7 @@ The `[DONE]` errors pattern (`\d+\s+errors`) would match DDO's `2 errors.` but o
 |----|---------|
 | 009 | DDO job stats always read 0 — extract_stats regex mismatch |
 | 010 | Log timestamps display in UTC instead of local time |
+| 011 | All scripts: logs and stats delayed — Python stdout buffering when piped |
 
 ---
 
