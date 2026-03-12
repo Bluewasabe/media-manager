@@ -61,24 +61,37 @@ The README even states "Hover over any option label to see what it does" — thi
 
 ## In Review
 
-Bugs below have been fixed in code. Awaiting your confirmation that they work after a rebuild.
+*(nothing currently in review)*
 
-| ID | Summary |
-|----|---------|
-| 006 | Execute mode crashes with EOFError (media_organizer + duplicate_finder archive) |
-| 007 | Graceful shutdown — zombie cleanup, SIGTERM handlers, Re-run button |
+---
+
+## Resolved
+
+### 008 — SIGTERM handler hangs when ThreadPoolExecutor is active (disk_drill_organizer, duplicate_finder)
+
+**Reported:** Stopping the container while a disk_drill_organizer or duplicate_finder job was running caused the backend process to hang indefinitely, requiring a full machine reboot.
+
+**Root cause:** The SIGTERM signal handlers in all three scripts called `sys.exit(0)`, which raises `SystemExit`. When called from inside an active `ThreadPoolExecutor` `with` block, Python's `ThreadPoolExecutor.__exit__` intercepts `SystemExit` and calls `shutdown(wait=True)` — blocking until every worker thread finishes. With hundreds or thousands of files being hashed/classified in parallel, this could take minutes or never complete. Docker's SIGKILL would eventually fire, but the uvicorn process was already wedged.
+
+**Fix applied:**
+- Changed `sys.exit(0)` → `os._exit(0)` in the `_handle_sigterm` function in all three scripts
+- `os._exit()` bypasses Python's cleanup machinery entirely and terminates the process immediately — threads, executors, and atexit handlers are never consulted
+- Added `import os` to `media_organizer.py` and `duplicate_finder.py` (was already present in `disk_drill_organizer.py`)
+- DB state cleanup is handled by `interrupt_stale_jobs()` on next startup, so no data is lost
+
+**Files changed:** `backend/scripts/disk_drill_organizer.py`, `backend/scripts/media_organizer.py`, `backend/scripts/duplicate_finder.py`
+
+---
 
 ### 006 — Execute mode crashes with EOFError (media_organizer + duplicate_finder archive)
 
-*(moved to In Review — fix applied, needs rebuild to confirm)*
-
-See Open section above for full detail.
+*(confirmed resolved)*
 
 ---
 
 ### 007 — Graceful shutdown + zombie job cleanup
 
-**Reported:** Restarting/rebuilding the container while a job is running leaves the job stuck in `running` status forever with no recovery path.
+**Confirmed resolved:** On startup the backend correctly detects and marks stale `running`/`pending` jobs as `interrupted`. Verified in logs: `[startup] Marked 1 stale job(s) as interrupted from previous run`.
 
 **Fix applied:**
 - **Startup zombie cleanup** (`db.py` `interrupt_stale_jobs`): on startup, any job still in `running`/`pending` is marked `interrupted` and a WARN log is appended
@@ -91,8 +104,6 @@ See Open section above for full detail.
 **Files changed:** `db.py`, `main.py`, `Dockerfile`, `docker-compose.yml`, `backend/scripts/media_organizer.py`, `backend/scripts/disk_drill_organizer.py`, `backend/scripts/duplicate_finder.py`, `frontend/index.html`
 
 ---
-
-## Resolved
 
 ### 001 — Jobs real-time tracker stats don't populate
 

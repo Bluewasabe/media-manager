@@ -26,6 +26,7 @@ import json
 import re
 import shutil
 import subprocess
+import os
 import sys
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1154,6 +1155,6 @@ if __name__ == "__main__":
     def _handle_sigterm(signum, frame):
         print("\n[INTERRUPTED] Shutdown signal received — stopping cleanly. "
               "Re-run with the same config to resume; already-processed files will be skipped.", flush=True)
-        sys.exit(0)
+        os._exit(0)
     signal.signal(signal.SIGTERM, _handle_sigterm)
     main()
