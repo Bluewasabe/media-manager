@@ -79,6 +79,16 @@ def build_args(script: str, config: dict) -> tuple[list[str], bool]:
         if config.get('report'):
             args += ['--report', config['report']]
 
+    elif script == 'quality_scanner':
+        args = ['python', '-u', '/app/scripts/quality_scanner.py']
+        args += ['--source', config['source']]
+        if config.get('recursive'):
+            args.append('--recursive')
+        if config.get('min_quality', 720) != 720:
+            args += ['--min-quality', str(config['min_quality'])]
+        if config.get('report'):
+            args += ['--report', config['report']]
+
     else:
         raise ValueError(f"Unknown script: {script}")
 
