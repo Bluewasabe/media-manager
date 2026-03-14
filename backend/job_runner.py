@@ -27,26 +27,46 @@ def detect_phase(line: str, current: str) -> str:
     lower = line.lower()
     if any(w in lower for w in ['scanning', 'indexing', 'found', 'discovered', 'hashing', 'loading']):
         return 'scanning'
-    if any(w in lower for w in ['moving', 'copying', 'processing', 'organizing', 'archiving']):
+    if any(w in lower for w in ['moving', 'copying', 'processing', 'organizing', 'archiving', 'keeping', 'breakdown']):
         return 'processing'
-    if any(w in lower for w in ['complete', 'finished', 'done', 'summary', 'total:']):
+    if any(w in lower for w in ['complete', 'finished', 'done', 'summary', 'total:', 'dry run', 'report written']):
         return 'complete'
     return current or 'scanning'
 
 
 def extract_stats(line: str, stats: dict):
     patterns = [
-        (r'(\d[\d,]*)\s+files?\s+(?:found|scanned|discovered)', 'scanned'),
+        (r'(\d[\d,]*)\s+files?\s+(?:scanned|discovered)', 'scanned'),
+        # "Found N ..." lines announce the total before processing starts — set total_files
+        # so the progress bar and ETA activate immediately for all scripts
+        (r'Found\s+(\d[\d,]*).*?\bfiles?', 'total_files'),
+        (r'scanned\s+(\d[\d,]*)/', 'scanned'),               # DDO: "... scanned N/total"
         (r'(\d[\d,]*)\s+(?:moved|archived)', 'moved'),
+        (r'(\d[\d,]*)\s+files?\s+(?:moved|copied)', 'moved'), # DDO: "N files moved/copied"
         (r'(\d[\d,]*)\s+(?:error|errors|failed)', 'errors'),
+        (r'\b(\d[\d,]*)\s+errors?\.', 'errors'),             # DDO: "N errors." from [DONE]
         (r'(\d[\d,]*)\s+(?:skipped|skip)', 'skipped'),
         (r'processing\s+(\d[\d,]*)', 'processed'),
         (r'(\d[\d,]*)\s+duplicate', 'processed'),
+        (r'[Kk]eeping:\s*(\d[\d,]*)', 'total_files'),        # media_organizer: "Keeping: N"
     ]
     for pattern, key in patterns:
         m = re.search(pattern, line, re.IGNORECASE)
         if m:
             stats[key] = int(m.group(1).replace(',', ''))
+
+    # STATS: key=value pairs emitted by quality_scanner.py
+    m = re.match(r'STATS:\s+(.+)', line)
+    if m:
+        for kv in m.group(1).split():
+            k, _, v = kv.partition('=')
+            if k and v.isdigit():
+                stats[k] = int(v)
+
+    # REPORT_PATH: capture the resolved path to the HTML report file
+    m = re.match(r'REPORT_PATH:\s+(.+)', line)
+    if m:
+        stats['report_path'] = m.group(1).strip()
 
     # Detect current file being processed
     file_patterns = [
@@ -95,7 +115,8 @@ class JobRunner:
             'errors': 0,
             'skipped': 0,
             'phase': 'scanning',
-            'current_file': ''
+            'current_file': '',
+            'total_files': 0
         }
 
         proc = None

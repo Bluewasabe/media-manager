@@ -198,6 +198,7 @@
     .script-icon-media { background: linear-gradient(135deg, rgba(0,212,255,0.3), rgba(0,212,255,0.1)); color: var(--cyan); border: 1px solid rgba(0,212,255,0.3); }
     .script-icon-drill { background: linear-gradient(135deg, rgba(170,68,255,0.3), rgba(170,68,255,0.1)); color: var(--purple); border: 1px solid rgba(170,68,255,0.3); }
     .script-icon-dupe { background: linear-gradient(135deg, rgba(0,255,136,0.3), rgba(0,255,136,0.1)); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+    .script-icon-quality { background: linear-gradient(135deg, rgba(255,184,0,0.3), rgba(255,184,0,0.1)); color: var(--amber); border: 1px solid rgba(255,184,0,0.3); }
 
     .config-panel { display: none; border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
     .config-panel.open { display: block; }
@@ -226,6 +227,12 @@
 
     .hidden { display: none !important; }
     .tab-panel { }
+
+    .tip-wrap { position: relative; display: inline-flex; align-items: center; cursor: default; vertical-align: middle; }
+    .tip-sym { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-muted); font-size: 0.6rem; margin-left: 5px; flex-shrink: 0; transition: all 0.15s; }
+    .tip-wrap:hover .tip-sym { color: var(--cyan); border-color: rgba(0,212,255,0.4); background: rgba(0,212,255,0.08); }
+    .tip-popup { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); min-width: 200px; max-width: 260px; background: rgba(10,15,35,0.98); border: 1px solid rgba(0,212,255,0.2); border-radius: 8px; padding: 8px 10px; font-size: 0.72rem; line-height: 1.5; color: var(--text-secondary); white-space: normal; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 30; }
+    .tip-wrap:hover .tip-popup { opacity: 1; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -302,7 +309,8 @@ const TAB_LABELS = {
 const SCRIPT_LABELS = {
   media_organizer: 'Media Organizer',
   disk_drill: 'Disk Drill Organizer',
-  duplicate_finder: 'Duplicate Finder'
+  duplicate_finder: 'Duplicate Finder',
+  quality_scanner: 'Quality Scanner',
 };
 
 const state = {
@@ -311,6 +319,8 @@ const state = {
   jobWS: {},
   jobLogs: {},
   jobStats: {},
+  jobTimers: {},
+  jobStartTimes: {},
   browserTarget: null,
   browserPath: null,
   browserCallback: null,
@@ -385,6 +395,18 @@ function formatSize(bytes) {
   return `${n.toFixed(1)} PB`;
 }
 
+function fmtLogTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso + 'Z').toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+}
+
+function fmtLogDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso + 'Z');
+  return d.toLocaleDateString([], {month:'2-digit', day:'2-digit', year:'numeric'}) + ' ' +
+         d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false});
+}
+
 function relativeTime(iso) {
   if (!iso) return '—';
   const diff = Date.now() - new Date(iso + 'Z').getTime();
@@ -395,6 +417,19 @@ function relativeTime(iso) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+function fmtDuration(s) {
+  if (!s && s !== 0) return '—';
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return [h, m, sec].map(v => String(v).padStart(2, '0')).join(':');
+}
+
+function tip(text) {
+  return `<span class="tip-wrap"><span class="tip-sym">ⓘ</span><span class="tip-popup">${text}</span></span>`;
 }
 
 function statusPill(status) {
@@ -559,11 +594,15 @@ function renderScripts() {
           'Finds and removes duplicate files using hash comparison and perceptual image matching.',
           ['Duplicates', 'Archive', 'Hash', 'Perceptual', 'Storage'],
           renderDuplicateFinderConfig)}
+        ${scriptCard('quality_scanner', 'QS', 'script-icon-quality', 'Quality Scanner',
+          'Scans video files with ffprobe and surfaces low-quality, webcam-recorded, and bad-audio files.',
+          ['Quality', 'Webcam', 'Audio', 'ffprobe', 'Report'],
+          renderQualityScannerConfig)}
       </div>
     </div>`;
 
   // Restore open states
-  ['media_organizer', 'disk_drill', 'duplicate_finder'].forEach(s => {
+  ['media_organizer', 'disk_drill', 'duplicate_finder', 'quality_scanner'].forEach(s => {
     if (loadLS('script_open_' + s, false)) {
       document.getElementById('config-' + s).classList.add('open');
       document.getElementById('config-' + s).innerHTML = getConfigRenderer(s)();
@@ -576,6 +615,7 @@ function getConfigRenderer(s) {
   if (s === 'media_organizer') return renderMediaOrganizerConfig;
   if (s === 'disk_drill') return renderDiskDrillConfig;
   if (s === 'duplicate_finder') return renderDuplicateFinderConfig;
+  if (s === 'quality_scanner') return renderQualityScannerConfig;
 }
 
 function scriptCard(id, initials, iconClass, name, desc, tags, configRenderer) {
@@ -689,15 +729,15 @@ function renderDiskDrillConfig() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;" class="form-group">
         <div>
-          <label class="form-label">Min Photo Size (px)</label>
+          <label class="form-label">Min Photo Size (px) ${tip('Minimum pixel count for the smallest image dimension. Photos below this are treated as low-quality recovery artifacts and filtered out.')}</label>
           <input type="number" class="form-input" id="dd-min-photo" value="${saved.min_photo_px}" />
         </div>
         <div>
-          <label class="form-label">Min Video Duration (sec)</label>
+          <label class="form-label">Min Video Duration (sec) ${tip('Minimum video length in seconds. Clips shorter than this are treated as fragments and filtered out.')}</label>
           <input type="number" class="form-input" id="dd-min-video" value="${saved.min_video_sec}" />
         </div>
         <div>
-          <label class="form-label">Workers</label>
+          <label class="form-label">Workers ${tip('Number of parallel threads for file hashing and classification. Higher is faster but uses more CPU and RAM.')}</label>
           <input type="number" class="form-input" id="dd-workers" value="${saved.workers}" min="1" max="32" />
         </div>
       </div>
@@ -705,12 +745,12 @@ function renderDiskDrillConfig() {
         <label class="toggle">
           <input type="checkbox" id="dd-include-filtered" ${saved.include_filtered ? 'checked' : ''} />
           <div class="toggle-track"><div class="toggle-thumb"></div></div>
-          <span style="font-size:0.82rem;color:var(--text-secondary)">Include Filtered Files</span>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Include Filtered Files ${tip('When on, files that fail quality checks are still copied into a Filtered subfolder rather than being discarded entirely.')}</span>
         </label>
         <label class="toggle">
           <input type="checkbox" id="dd-skip-video-meta" ${saved.skip_video_meta ? 'checked' : ''} />
           <div class="toggle-track"><div class="toggle-thumb"></div></div>
-          <span style="font-size:0.82rem;color:var(--text-secondary)">Skip Video Metadata</span>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Skip Video Metadata ${tip('Skip reading video duration and resolution via ffprobe. Use if ffprobe is not installed or is slowing down the scan.')}</span>
         </label>
       </div>
       <div class="form-group">
@@ -788,20 +828,20 @@ function renderDuplicateFinderConfig() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" class="form-group">
         <div>
-          <label class="form-label">Hash Algorithm</label>
+          <label class="form-label">Hash Algorithm ${tip('SHA-256 is slower but cryptographically strong. MD5 is faster with negligible collision risk for media files.')}</label>
           <div class="seg-btn" id="df-hash-seg">
             <button onclick="setSegBtn('df-hash-seg',this,'sha256')" class="${(saved.hash||'sha256')==='sha256'?'active':''}" data-val="sha256">SHA-256</button>
             <button onclick="setSegBtn('df-hash-seg',this,'md5')" class="${saved.hash==='md5'?'active':''}" data-val="md5">MD5</button>
           </div>
         </div>
         <div>
-          <label class="form-label">Workers</label>
+          <label class="form-label">Workers ${tip('Number of parallel threads for hashing. More workers = faster on multi-core systems, but increases CPU and RAM usage.')}</label>
           <input type="number" class="form-input" id="df-workers" value="${saved.workers||8}" min="1" max="32" />
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" class="form-group">
         <div>
-          <label class="form-label">Min File Size (bytes)</label>
+          <label class="form-label">Min File Size (bytes) ${tip('Files smaller than this are ignored. Filters out temporary files and empty recovery fragments. Default: 4096 bytes (4 KB).')}</label>
           <input type="number" class="form-input" id="df-min-size" value="${saved.min_size||4096}" />
         </div>
       </div>
@@ -809,12 +849,12 @@ function renderDuplicateFinderConfig() {
         <label class="toggle">
           <input type="checkbox" id="df-perceptual" ${saved.perceptual?'checked':''} />
           <div class="toggle-track"><div class="toggle-thumb"></div></div>
-          <span style="font-size:0.82rem;color:var(--text-secondary)">Perceptual Hashing (images)</span>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Perceptual Hashing ${tip('Uses a visual fingerprint (pHash) to detect near-identical images even if resized or re-compressed. Slower than hash comparison, but catches more duplicates.')}</span>
         </label>
         <label class="toggle">
           <input type="checkbox" id="df-skip-video-meta" ${saved.skip_video_meta?'checked':''} />
           <div class="toggle-track"><div class="toggle-thumb"></div></div>
-          <span style="font-size:0.82rem;color:var(--text-secondary)">Skip Video Metadata</span>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Skip Video Metadata ${tip('Skip reading video duration and resolution during comparison. Use if ffprobe is unavailable or causing slowdowns.')}</span>
         </label>
       </div>
       <div class="form-group">
@@ -885,6 +925,72 @@ function dfRemoveSource(idx) {
       </div>`).join('');
 }
 
+// ---- Quality Scanner Config ----
+function renderQualityScannerConfig() {
+  const saved = loadLS('cfg_quality_scanner', {
+    source: '', recursive: false, min_quality: 720, report: '', execute: false
+  });
+  const ls = loadLS('qs_last_stats', null);
+
+  const statKeys   = ['scanned', 'low_quality', 'webcam', 'bad_audio'];
+  const statLabels = ['Scanned', 'Low Quality', 'Webcam', 'Bad Audio'];
+  const statColors = ['var(--cyan)', 'var(--amber)', 'var(--red)', 'var(--purple)'];
+
+  const statsBoxes = statKeys.map((key, i) => {
+    const val = ls ? ls[key] : null;
+    const color = val === null ? 'var(--text-muted)' : (val > 0 ? statColors[i] : 'var(--text-muted)');
+    return `
+      <div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;text-align:center;">
+        <div style="font-size:1.1rem;font-weight:700;color:${color}">${val !== null ? val : '—'}</div>
+        <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">${statLabels[i]}</div>
+      </div>`;
+  }).join('');
+
+  const mq = saved.min_quality || 720;
+  return `
+    <div class="fade-in">
+      <div class="section-header" style="margin-bottom:10px">Last Scan Results</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;padding:10px;background:rgba(0,0,0,0.15);border-radius:8px;border:1px solid var(--border);">
+        ${statsBoxes}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Source Directory <span style="color:var(--red)">*</span></label>
+        <div class="form-row">
+          <input class="form-input" id="qs-source" value="${escHtml(saved.source)}" placeholder="/mnt/drives/d/Movies" />
+          <button class="btn-icon" style="flex-shrink:0" data-browse="qs-source">Browse</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" class="form-group">
+        <div>
+          <label class="form-label">Min Quality ${tip('Files with video height below this value are flagged as low quality.')}</label>
+          <select class="form-input" id="qs-min-quality">
+            <option value="480"  ${mq === 480  ? 'selected' : ''}>480p</option>
+            <option value="540"  ${mq === 540  ? 'selected' : ''}>540p</option>
+            <option value="720"  ${mq === 720  ? 'selected' : ''}>720p</option>
+            <option value="1080" ${mq === 1080 ? 'selected' : ''}>1080p</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">HTML Report <span style="color:var(--text-muted)">(optional)</span></label>
+          <div class="form-row">
+            <input class="form-input" id="qs-report" value="${escHtml(saved.report)}" placeholder="/mnt/drives/d/quality.html" />
+            <button class="btn-icon" style="flex-shrink:0" data-browse="qs-report">Browse</button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="toggle">
+          <input type="checkbox" id="qs-recursive" ${saved.recursive ? 'checked' : ''} />
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span style="font-size:0.82rem;color:var(--text-secondary)">Recursive ${tip('Scan all subdirectories inside the source folder.')}</span>
+        </label>
+      </div>
+      <button onclick="runScript('quality_scanner')" class="btn-primary">
+        ▶ Scan
+      </button>
+    </div>`;
+}
+
 function setSegBtn(id, btn, val) {
   const seg = document.getElementById(id);
   if (!seg) return;
@@ -928,6 +1034,14 @@ function collectConfig(script) {
       workers: parseInt(document.getElementById('dd-workers')?.value || '8'),
     };
   }
+  if (script === 'quality_scanner') {
+    return {
+      source:      document.getElementById('qs-source')?.value?.trim() || '',
+      recursive:   document.getElementById('qs-recursive')?.checked || false,
+      min_quality: parseInt(document.getElementById('qs-min-quality')?.value || '720'),
+      report:      document.getElementById('qs-report')?.value?.trim() || '',
+    };
+  }
   if (script === 'duplicate_finder') {
     const actionSeg = document.getElementById('df-action-seg');
     const activeAction = actionSeg?.querySelector('button.active,button.active-red,button.active-green');
@@ -955,6 +1069,9 @@ async function runScript(script) {
   const config = collectConfig(script);
 
   // Validation
+  if (script === 'quality_scanner') {
+    if (!config.source) { toast('Source directory is required', 'error'); return; }
+  }
   if (script === 'disk_drill') {
     if (!config.input_dir) { toast('Input directory is required', 'error'); return; }
     if (!config.output_dir) { toast('Output directory is required', 'error'); return; }
@@ -1292,6 +1409,7 @@ function activeJobCard(job) {
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           ${statusPill(job.status)}
+          <span id="elapsed-${job.id}" style="font-size:0.75rem;font-family:monospace;color:var(--cyan);min-width:56px;text-align:right">00:00:00</span>
           ${job.status === 'running' || job.status === 'pending' ? `<button class="btn-danger btn-sm" onclick="cancelJob('${job.id}')">Cancel</button>` : ''}
         </div>
       </div>
@@ -1303,26 +1421,39 @@ function activeJobCard(job) {
       </div>
 
       <!-- Progress bar -->
-      <div class="progress-bar ${phase !== 'complete' ? 'progress-indeterminate' : ''}" style="margin-bottom:14px;">
+      <div class="progress-bar ${phase !== 'complete' ? 'progress-indeterminate' : ''}" id="progress-${job.id}" style="margin-bottom:14px;">
         <div class="progress-fill" style="${phase === 'complete' ? 'width:100%;background:var(--green)' : ''}"></div>
       </div>
 
       <!-- Stats grid -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;" id="stats-${job.id}">
-        ${jobStatMini('Scanned', stats.scanned || 0, 'var(--cyan)')}
-        ${jobStatMini('Processed', stats.processed || 0, 'var(--purple)')}
-        ${jobStatMini('Moved', stats.moved || 0, 'var(--green)')}
-        ${jobStatMini('Errors', stats.errors || 0, stats.errors > 0 ? 'var(--red)' : 'var(--text-muted)')}
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;" id="stats-${job.id}">
+        ${job.script === 'quality_scanner'
+          ? `${jobStatMini('Scanned', stats.scanned || 0, 'var(--cyan)')}
+             ${jobStatMini('Low Quality', stats.low_quality || 0, (stats.low_quality || 0) > 0 ? 'var(--amber)' : 'var(--text-muted)')}
+             ${jobStatMini('Webcam', stats.webcam || 0, (stats.webcam || 0) > 0 ? 'var(--red)' : 'var(--text-muted)')}
+             ${jobStatMini('Bad Audio', stats.bad_audio || 0, (stats.bad_audio || 0) > 0 ? 'var(--purple)' : 'var(--text-muted)')}`
+          : `${jobStatMini('Scanned', stats.scanned || 0, 'var(--cyan)')}
+             ${jobStatMini('Processed', stats.processed || 0, 'var(--purple)')}
+             ${jobStatMini('Moved', stats.moved || 0, 'var(--green)')}
+             ${jobStatMini('Errors', stats.errors || 0, (stats.errors || 0) > 0 ? 'var(--red)' : 'var(--text-muted)')}`}
       </div>
+
+      <!-- ETA / rate -->
+      <div id="eta-${job.id}" style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;min-height:14px;"></div>
 
       <!-- Current file -->
       <div id="current-file-${job.id}" style="font-size:0.72rem;color:var(--text-muted);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:10px;min-height:14px;">
         ${stats.current_file ? `→ ${escHtml(stats.current_file)}` : ''}
       </div>
 
+      <!-- Report link (shown when script emits REPORT_PATH) -->
+      <div id="report-link-${job.id}" style="margin-bottom:10px;${stats.report_path ? '' : 'display:none'}">
+        ${stats.report_path ? `<a href="/api/file?path=${encodeURIComponent(stats.report_path)}" target="_blank" style="color:var(--cyan);font-size:0.82rem;text-decoration:none;">📄 View Report →</a>` : ''}
+      </div>
+
       <!-- Live log -->
       <div class="live-log" id="live-log-${job.id}">
-        ${(state.jobLogs[job.id] || []).map(l => `<div class="log-line level-${l.level}"><span style="color:var(--text-muted)">${l.timestamp.slice(11,19)}</span> ${escHtml(l.message)}</div>`).join('')}
+        ${(state.jobLogs[job.id] || []).map(l => `<div class="log-line level-${l.level}"><span style="color:var(--text-muted)">${fmtLogTime(l.timestamp)}</span> ${escHtml(l.message)}</div>`).join('')}
       </div>
     </div>`;
 }
@@ -1342,13 +1473,18 @@ function historyJobRow(job) {
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="flex:1;min-width:0;">
           <div style="font-size:0.85rem;font-weight:500;margin-bottom:2px;">${SCRIPT_LABELS[job.script] || job.script}</div>
-          <div style="font-size:0.72rem;color:var(--text-muted);">${relativeTime(job.created_at)}</div>
+          <div style="font-size:0.72rem;color:var(--text-muted);">${relativeTime(job.created_at)}${job.updated_at && job.status !== 'pending' && job.status !== 'running' ? ` · ${fmtDuration(Math.round((new Date(job.updated_at + 'Z') - new Date(job.created_at + 'Z')) / 1000))}` : ''}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;font-size:0.75rem;color:var(--text-muted);">
-          ${stats.moved > 0 ? `<span style="color:var(--green)">${stats.moved} moved</span>` : ''}
-          ${stats.errors > 0 ? `<span style="color:var(--red)">${stats.errors} err</span>` : ''}
+          ${job.script === 'quality_scanner'
+            ? `${(stats.low_quality || 0) > 0 ? `<span style="color:var(--amber)">${stats.low_quality} low-q</span>` : ''}
+               ${(stats.webcam || 0) > 0 ? `<span style="color:var(--red)">${stats.webcam} webcam</span>` : ''}
+               ${(stats.bad_audio || 0) > 0 ? `<span style="color:var(--purple)">${stats.bad_audio} bad-audio</span>` : ''}`
+            : `${stats.moved > 0 ? `<span style="color:var(--green)">${stats.moved} moved</span>` : ''}
+               ${stats.errors > 0 ? `<span style="color:var(--red)">${stats.errors} err</span>` : ''}`}
         </div>
         ${statusPill(job.status)}
+        ${stats.report_path ? `<a href="/api/file?path=${encodeURIComponent(stats.report_path)}" target="_blank" class="btn-icon btn-sm" style="color:var(--cyan);text-decoration:none;">📄 Report</a>` : ''}
         ${['failed', 'cancelled', 'interrupted'].includes(job.status) ? `<button class="btn-secondary btn-sm" onclick="rerunJob('${job.id}', '${job.script}')">Re-run</button>` : ''}
         <button class="btn-icon btn-sm" onclick="toggleHistoryLogs('${job.id}')">View Logs</button>
       </div>
@@ -1389,9 +1525,23 @@ async function toggleHistoryLogs(jobId) {
       el.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;padding:8px">No logs found</div>`;
       return;
     }
-    el.innerHTML = `
+    const job = state.jobs.find(j => j.id === jobId);
+    const jstats = job?.stats || {};
+    let summary = '';
+    if (job && job.updated_at) {
+      const durSec = Math.round((new Date(job.updated_at + 'Z') - new Date(job.created_at + 'Z')) / 1000);
+      const parts = [
+        `Started ${fmtLogDateTime(job.created_at)}`,
+        `Duration ${fmtDuration(durSec)}`,
+        (jstats.scanned || 0) > 0 ? `${(jstats.scanned).toLocaleString()} scanned` : null,
+        (jstats.moved || 0) > 0 ? `${(jstats.moved).toLocaleString()} moved` : null,
+        (jstats.errors || 0) > 0 ? `${(jstats.errors).toLocaleString()} errors` : null,
+      ].filter(Boolean);
+      summary = `<div style="display:flex;flex-wrap:wrap;gap:16px;padding:8px 10px;margin-bottom:8px;background:rgba(0,0,0,0.2);border-radius:6px;border:1px solid var(--border);">${parts.map(p => `<span style="font-size:0.72rem;color:var(--text-muted)">${p}</span>`).join('')}</div>`;
+    }
+    el.innerHTML = summary + `
       <div class="live-log" style="height:200px;">
-        ${logs.reverse().map(l => `<div class="log-line ${l.level}"><span style="color:var(--text-muted)">${l.timestamp.slice(11,19)}</span> <span class="level-${l.level}">[${l.level}]</span> ${escHtml(l.message)}</div>`).join('')}
+        ${logs.reverse().map(l => `<div class="log-line ${l.level}"><span style="color:var(--text-muted)">${fmtLogTime(l.timestamp)}</span> <span class="level-${l.level}">[${l.level}]</span> ${escHtml(l.message)}</div>`).join('')}
       </div>`;
     el.querySelector('.live-log').scrollTop = 99999;
   } catch (e) {
@@ -1428,6 +1578,9 @@ function connectJobWS(jobId) {
       if (msg.job && msg.job.stats) {
         state.jobStats[jobId] = msg.job.stats;
       }
+      if (msg.job && (msg.job.status === 'running' || msg.job.status === 'pending')) {
+        startElapsedTimer(jobId, msg.job.created_at);
+      }
     }
 
     if (msg.type === 'log') {
@@ -1448,6 +1601,10 @@ function connectJobWS(jobId) {
     if (msg.type === 'done') {
       ws.close();
       delete state.jobWS[jobId];
+      if (state.jobTimers[jobId]) {
+        clearInterval(state.jobTimers[jobId]);
+        delete state.jobTimers[jobId];
+      }
       setTimeout(renderJobs, 500);
     }
   };
@@ -1463,12 +1620,24 @@ function connectJobWS(jobId) {
   state.jobWS[jobId] = ws;
 }
 
+function startElapsedTimer(jobId, startIso) {
+  if (state.jobTimers[jobId]) clearInterval(state.jobTimers[jobId]);
+  state.jobStartTimes[jobId] = new Date(startIso + 'Z').getTime();
+  function tick() {
+    const elapsed = Math.floor((Date.now() - state.jobStartTimes[jobId]) / 1000);
+    const el = document.getElementById('elapsed-' + jobId);
+    if (el) el.textContent = fmtDuration(elapsed);
+  }
+  tick();
+  state.jobTimers[jobId] = setInterval(tick, 1000);
+}
+
 function appendLiveLog(jobId, msg) {
   const el = document.getElementById('live-log-' + jobId);
   if (!el) return;
   const line = document.createElement('div');
   line.className = `log-line level-${msg.level}`;
-  line.innerHTML = `<span style="color:var(--text-muted)">${msg.timestamp.slice(11,19)}</span> ${escHtml(msg.message)}`;
+  line.innerHTML = `<span style="color:var(--text-muted)">${fmtLogTime(msg.timestamp)}</span> ${escHtml(msg.message)}`;
   el.appendChild(line);
   // Keep last 50 lines
   while (el.children.length > 50) el.removeChild(el.firstChild);
@@ -1478,15 +1647,67 @@ function appendLiveLog(jobId, msg) {
 function updateJobStatsUI(jobId, stats) {
   const statsEl = document.getElementById('stats-' + jobId);
   if (statsEl) {
-    statsEl.innerHTML = `
-      ${jobStatMini('Scanned', stats.scanned || 0, 'var(--cyan)')}
-      ${jobStatMini('Processed', stats.processed || 0, 'var(--purple)')}
-      ${jobStatMini('Moved', stats.moved || 0, 'var(--green)')}
-      ${jobStatMini('Errors', stats.errors || 0, (stats.errors||0) > 0 ? 'var(--red)' : 'var(--text-muted)')}`;
+    const job = state.jobs.find(j => j.id === jobId);
+    if (job && job.script === 'quality_scanner') {
+      statsEl.innerHTML = `
+        ${jobStatMini('Scanned',     stats.scanned     || 0, 'var(--cyan)')}
+        ${jobStatMini('Low Quality', stats.low_quality || 0, (stats.low_quality || 0) > 0 ? 'var(--amber)'  : 'var(--text-muted)')}
+        ${jobStatMini('Webcam',      stats.webcam      || 0, (stats.webcam      || 0) > 0 ? 'var(--red)'    : 'var(--text-muted)')}
+        ${jobStatMini('Bad Audio',   stats.bad_audio   || 0, (stats.bad_audio   || 0) > 0 ? 'var(--purple)' : 'var(--text-muted)')}`;
+      // Persist last scan stats so the config panel can show them on next open
+      if (stats.scanned !== undefined) {
+        saveLS('qs_last_stats', {
+          scanned:     stats.scanned     || 0,
+          low_quality: stats.low_quality || 0,
+          webcam:      stats.webcam      || 0,
+          bad_audio:   stats.bad_audio   || 0,
+        });
+      }
+    } else {
+      statsEl.innerHTML = `
+        ${jobStatMini('Scanned',   stats.scanned   || 0, 'var(--cyan)')}
+        ${jobStatMini('Processed', stats.processed || 0, 'var(--purple)')}
+        ${jobStatMini('Moved',     stats.moved     || 0, 'var(--green)')}
+        ${jobStatMini('Errors',    stats.errors    || 0, (stats.errors || 0) > 0 ? 'var(--red)' : 'var(--text-muted)')}`;
+    }
   }
+
+  // Update progress bar if total_files is known
+  const progressEl = document.getElementById('progress-' + jobId);
+  if (progressEl && (stats.total_files || 0) > 0 && (stats.scanned || 0) > 0) {
+    const pct = Math.min(100, Math.round((stats.scanned || 0) / stats.total_files * 100));
+    progressEl.className = 'progress-bar';
+    progressEl.innerHTML = `<div class="progress-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--cyan),var(--purple))"></div>`;
+  }
+
+  // Update ETA line
+  const etaEl = document.getElementById('eta-' + jobId);
+  if (etaEl) {
+    const total = stats.total_files || 0;
+    const scanned = stats.scanned || 0;
+    const startMs = state.jobStartTimes[jobId];
+    if (total > 0 && scanned > 0 && startMs) {
+      const elapsedSec = (Date.now() - startMs) / 1000;
+      if (elapsedSec > 0) {
+        const rate = scanned / elapsedSec;
+        const etaSec = Math.round((total - scanned) / rate);
+        const rateStr = rate >= 1 ? `${rate.toFixed(1)} files/s` : `${(rate * 60).toFixed(0)} files/min`;
+        etaEl.textContent = `${scanned.toLocaleString()} / ${total.toLocaleString()} · ${rateStr} · ETA ${fmtDuration(etaSec)}`;
+      }
+    } else if (total > 0) {
+      etaEl.textContent = `${scanned.toLocaleString()} / ${total.toLocaleString()} files`;
+    }
+  }
+
   const cfEl = document.getElementById('current-file-' + jobId);
   if (cfEl && stats.current_file) {
     cfEl.textContent = '→ ' + stats.current_file;
+  }
+
+  const reportEl = document.getElementById('report-link-' + jobId);
+  if (reportEl && stats.report_path) {
+    reportEl.style.display = '';
+    reportEl.innerHTML = `<a href="/api/file?path=${encodeURIComponent(stats.report_path)}" target="_blank" style="color:var(--cyan);font-size:0.82rem;text-decoration:none;">📄 View Report →</a>`;
   }
 }
 
@@ -1640,7 +1861,7 @@ function renderLogsUI() {
   }
 
   body.innerHTML = logsState.results.map(l => {
-    const ts = l.timestamp ? l.timestamp.slice(0, 19).replace('T', ' ') : '—';
+    const ts = fmtLogDateTime(l.timestamp);
     const rowBg = l.level === 'ERROR' ? 'background:rgba(255,68,68,0.04)' : l.level === 'WARN' ? 'background:rgba(255,184,0,0.03)' : '';
     const borderLeft = l.level === 'ERROR' ? 'border-left:2px solid var(--red)' : l.level === 'WARN' ? 'border-left:2px solid var(--amber)' : l.level === 'DRY' ? 'border-left:2px solid var(--purple)' : '';
     return `

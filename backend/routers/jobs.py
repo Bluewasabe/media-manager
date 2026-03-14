@@ -19,7 +19,7 @@ def build_args(script: str, config: dict) -> tuple[list[str], bool]:
     needs_conf = False
 
     if script == 'media_organizer':
-        args = ['python', '/app/scripts/media_organizer.py']
+        args = ['python', '-u', '/app/scripts/media_organizer.py']
         args.append(config['mode'])
         if config.get('path'):
             args.append(config['path'])
@@ -28,7 +28,7 @@ def build_args(script: str, config: dict) -> tuple[list[str], bool]:
             needs_conf = True
 
     elif script == 'disk_drill':
-        args = ['python', '/app/scripts/disk_drill_organizer.py']
+        args = ['python', '-u', '/app/scripts/disk_drill_organizer.py']
         args.append(config['input_dir'])
         args.append(config['output_dir'])
         if config.get('execute'):
@@ -50,7 +50,7 @@ def build_args(script: str, config: dict) -> tuple[list[str], bool]:
             args += ['--report', config['report']]
 
     elif script == 'duplicate_finder':
-        args = ['python', '/app/scripts/duplicate_finder.py']
+        args = ['python', '-u', '/app/scripts/duplicate_finder.py']
         sources = config.get('sources', [])
         if sources:
             args += ['--sources'] + sources
@@ -76,6 +76,16 @@ def build_args(script: str, config: dict) -> tuple[list[str], bool]:
             args += ['--workers', str(config['workers'])]
         if config.get('min_size', 4096) != 4096:
             args += ['--min-size', str(config['min_size'])]
+        if config.get('report'):
+            args += ['--report', config['report']]
+
+    elif script == 'quality_scanner':
+        args = ['python', '-u', '/app/scripts/quality_scanner.py']
+        args += ['--source', config['source']]
+        if config.get('recursive'):
+            args.append('--recursive')
+        if config.get('min_quality', 720) != 720:
+            args += ['--min-quality', str(config['min_quality'])]
         if config.get('report'):
             args += ['--report', config['report']]
 
