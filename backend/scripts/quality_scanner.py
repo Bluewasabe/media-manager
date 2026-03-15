@@ -354,7 +354,7 @@ def write_results_json(json_path: Path, results: list, source: Path, scan_date: 
             "bad_audio":   r["bad_audio"],
             "reasons":     r["reasons"],
             "resolution":  f"{r['info']['width']}x{r['info']['height']}" if r["info"].get("width") and r["info"].get("height") else "",
-            "bitrate_kbps": r["info"].get("bitrate_kbps", 0),
+            "bitrate_kbps": r["info"].get("bitrate_kbps") or 0,
         }
         for r in results
         if r["low_quality"] or r["webcam"] or r["bad_audio"]

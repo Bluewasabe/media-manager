@@ -54,13 +54,13 @@ def _get_results_json_path(job: dict) -> Path:
     if not report_path:
         raise HTTPException(
             404,
-            "No results.json found for this job. The scan may have run without --report."
+            "No results.json for this job — scan was run without --report."
         )
     json_path = Path(report_path).with_suffix(".json")
     if not json_path.exists():
         raise HTTPException(
             404,
-            "No results.json found for this job. The scan may have run without --report."
+            f"results.json not found on disk (expected: {json_path}). It may have been deleted."
         )
     return json_path
 
@@ -228,12 +228,18 @@ async def _execute_replace_task(
 
             try:
                 shutil.move(str(repl), str(dest))
+            except Exception as e:
+                await log("ERROR", f"Failed to move {repl} → {dest}: {e}")
+                errors += 1
+                continue
+            # Move succeeded — log and delete original
+            await log("INFO", f"Moved {repl} → {dest}")
+            try:
                 orig.unlink()
-                await log("INFO", f"Moved {repl} → {dest}")
                 await log("INFO", f"Deleted {orig}")
                 moved += 1
             except Exception as e:
-                await log("ERROR", f"Failed swap {orig}: {e}")
+                await log("ERROR", f"Move succeeded but could not delete original {orig}: {e} — two copies may exist")
                 errors += 1
 
         for nuke_path in nukes:
