@@ -1451,6 +1451,16 @@ function activeJobCard(job) {
         ${stats.report_path ? `<a href="/api/file?path=${encodeURIComponent(stats.report_path)}" target="_blank" style="color:var(--cyan);font-size:0.82rem;text-decoration:none;">📄 View Report →</a>` : ''}
       </div>
 
+      <!-- Review Replacements button (quality_scanner jobs with flagged files) -->
+      <div id="replace-btn-${job.id}" style="margin-bottom:10px;${
+        job.script === 'quality_scanner' && ((stats.low_quality||0)+(stats.webcam||0)+(stats.bad_audio||0)) > 0
+          ? '' : 'display:none'
+      }">
+        <button class="btn-secondary btn-sm" onclick="openReplaceOverlay('${job.id}')">
+          🔄 Review Replacements
+        </button>
+      </div>
+
       <!-- Live log -->
       <div class="live-log" id="live-log-${job.id}">
         ${(state.jobLogs[job.id] || []).map(l => `<div class="log-line level-${l.level}"><span style="color:var(--text-muted)">${fmtLogTime(l.timestamp)}</span> ${escHtml(l.message)}</div>`).join('')}
@@ -1708,6 +1718,13 @@ function updateJobStatsUI(jobId, stats) {
   if (reportEl && stats.report_path) {
     reportEl.style.display = '';
     reportEl.innerHTML = `<a href="/api/file?path=${encodeURIComponent(stats.report_path)}" target="_blank" style="color:var(--cyan);font-size:0.82rem;text-decoration:none;">📄 View Report →</a>`;
+  }
+
+  // Show "Review Replacements" for quality_scanner jobs with flagged files
+  const replaceBtnEl = document.getElementById('replace-btn-' + jobId);
+  if (replaceBtnEl) {
+    const flaggedCount = (stats.low_quality || 0) + (stats.webcam || 0) + (stats.bad_audio || 0);
+    if (flaggedCount > 0) replaceBtnEl.style.display = '';
   }
 }
 
