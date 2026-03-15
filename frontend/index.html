@@ -2005,9 +2005,10 @@ async function runCleanup() {
 // =====================================================================
 let browserDrives = [];
 
-function openBrowser(targetInputId, mode = null) {
+function openBrowser(targetInputId, mode = null, callback = null) {
   state.browserTarget = targetInputId;
-  state.browserMode = mode; // null = normal, 'df-add-source' = add to df sources
+  state.browserMode = mode; // null = normal, 'df-add-source' = add to df sources, 'file-select' = pick file via callback
+  state.browserCallback = callback;
   state.browserPath = null;
 
   const modal = document.getElementById('browser-modal');
@@ -2016,6 +2017,8 @@ function openBrowser(targetInputId, mode = null) {
 
   if (mode === 'df-add-source') {
     title.textContent = 'Select Source Directory';
+  } else if (mode === 'file-select') {
+    title.textContent = 'Select Replacement File';
   } else {
     title.textContent = 'Browse — Select Folder';
   }
@@ -2029,6 +2032,7 @@ function closeBrowser() {
   state.browserTarget = null;
   state.browserPath = null;
   state.browserMode = null;
+  state.browserCallback = null;
 }
 
 async function browserShowDrives() {
@@ -2084,8 +2088,13 @@ async function browserNavigate(path) {
           ? `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.82rem">Empty directory</div>`
           : data.items.filter(i=>!i.hidden).map(i => {
               const icon = i.type === 'dir' ? '<span class="dir-icon">📁</span>' : `<span class="file-icon">${getFileIcon(i.name)}</span>`;
-              const onclick = i.type === 'dir' && !i.inaccessible ? `onclick="browserNavigate('${i.path.replace(/'/g, "\\'")}')"` : '';
-              const style = i.type !== 'dir' ? 'cursor:default;' : '';
+              const isFileSelect = state.browserMode === 'file-select';
+              const onclick = i.type === 'dir' && !i.inaccessible
+                ? `onclick="browserNavigate('${i.path.replace(/'/g, "\\'")}')"`
+                : (i.type !== 'dir' && isFileSelect
+                    ? `onclick="browserPickFile('${i.path.replace(/'/g, "\\'")}')" `
+                    : '');
+              const style = i.type !== 'dir' && !isFileSelect ? 'cursor:default;' : '';
               return `
                 <div class="browser-item ${i.type}" ${onclick} style="${style}${i.inaccessible?'opacity:0.4;cursor:not-allowed':''}">
                   ${icon}
@@ -2130,11 +2139,20 @@ function browserSelectFolder() {
     } else {
       toast('Source already added', 'info');
     }
+  } else if (state.browserCallback) {
+    state.browserCallback(state.browserPath);
   } else if (state.browserTarget) {
     const input = document.getElementById(state.browserTarget);
     if (input) input.value = path;
   }
 
+  closeBrowser();
+}
+
+function browserPickFile(path) {
+  if (state.browserCallback) {
+    state.browserCallback(path);
+  }
   closeBrowser();
 }
 
