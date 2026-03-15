@@ -2306,6 +2306,7 @@ async function refreshDownloads() {
 
     renderReplaceTable();
   } catch (e) {
+    state.replaceItems = [];
     errBanner.textContent = e.message || 'Failed to load match results';
     errBanner.classList.remove('hidden');
     if (e.message && e.message.includes('Downloads folder not accessible')) {
@@ -2331,7 +2332,7 @@ function renderReplaceTable() {
   const rows = state.replaceItems.map((item, idx) => {
     const fname = item.original.split('/').pop();
     const flagLabel = item.low_quality ? 'Low quality' : item.webcam ? 'Webcam' : item.bad_audio ? 'Bad audio' : 'Flagged';
-    const reasonsTip = escHtml(item.reasons.join('; '));
+    const reasonsTip = escHtml((item.reasons || []).join('; '));
 
     const matchDisplay = item.userReplacement
       ? `<span style="color:var(--cyan)">${escHtml(item.userReplacement.split('/').pop())}</span> <span style="color:var(--text-muted);font-size:0.72rem">(manual)</span>`
@@ -2339,7 +2340,7 @@ function renderReplaceTable() {
         ? `${escHtml(item.proposed_match.split('/').pop())}${item.ambiguous ? ' <span style="color:var(--amber)" title="Two candidates are very close — please confirm">⚠️</span>' : ''}${item.isNewMatch ? ' <span style="color:var(--green);font-size:0.7rem">NEW</span>' : ''}`
         : `<span style="color:var(--text-muted);font-style:italic">no match</span>`;
 
-    const scoreDisplay = item.score !== null ? `${item.score}%` : '—';
+    const scoreDisplay = item.score != null ? `${item.score}%` : '—';
     const effectiveReplacement = item.userReplacement || item.proposed_match;
 
     const actionBtns = `
@@ -2383,14 +2384,18 @@ function renderReplaceTable() {
 }
 
 function replaceSetAction(idx, action) {
+  if (!state.replaceItems[idx]) return;
   state.replaceItems[idx].action = action;
   renderReplaceTable();
 }
 
 function replacePickDifferent(idx) {
+  const originalPath = state.replaceItems[idx].original;
   openBrowser(null, 'file-select', (selectedPath) => {
-    state.replaceItems[idx].userReplacement = selectedPath;
-    state.replaceItems[idx].action = 'confirm';
+    const current = state.replaceItems.findIndex(i => i.original === originalPath);
+    if (current === -1) return;
+    state.replaceItems[current].userReplacement = selectedPath;
+    state.replaceItems[current].action = 'confirm';
     renderReplaceTable();
   });
   // Pre-navigate to /downloads
@@ -2417,7 +2422,10 @@ async function executeSwaps() {
 
   // Build confirmation message
   const deleteList = [
-    ...confirms.map(i => `DELETE: ${i.original.split('/').pop()}`),
+    ...confirms.map(i => {
+      const replacement = (i.userReplacement || i.proposed_match || '').split('/').pop();
+      return `SWAP: ${i.original.split('/').pop()} → ${replacement}`;
+    }),
     ...nukes.map(i => `DELETE: ${i.original.split('/').pop()}`),
   ];
   const msg = `This will permanently delete ${deleteList.length} file(s):\n\n${deleteList.join('\n')}\n\nContinue?`;
@@ -2440,7 +2448,7 @@ async function executeSwaps() {
       swaps,
       nukes: nukeList,
     });
-    toast(`Replacement job started — job ID: ${result.job_id.slice(0,8)}`, 'success');
+    toast(`Replacement job started — job ID: ${(result.job_id || '').slice(0,8)}`, 'success');
     closeReplaceOverlay();
     // Refresh jobs list so the new replace_workflow job card appears
     renderJobs();
