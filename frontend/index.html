@@ -290,6 +290,55 @@
     </div>
   </div>
 
+  <!-- ============================================================= -->
+  <!-- REPLACE WORKFLOW OVERLAY                                       -->
+  <!-- ============================================================= -->
+  <div id="replace-overlay" class="hidden" style="
+    position:fixed;inset:0;background:var(--bg-primary);z-index:1000;
+    display:flex;flex-direction:column;overflow:hidden;">
+
+    <!-- Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);
+                display:flex;align-items:center;gap:12px;flex-shrink:0;">
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:1rem;margin-bottom:2px">
+          🔄 Replacement Workflow
+        </div>
+        <div id="replace-overlay-subtitle" style="font-size:0.78rem;color:var(--text-muted);font-family:monospace"></div>
+      </div>
+      <div id="replace-downloads-label" style="font-size:0.75rem;color:var(--text-muted);
+           padding:4px 10px;background:rgba(0,0,0,0.2);border-radius:6px;">
+        Downloads: /downloads
+      </div>
+      <button id="replace-refresh-btn" onclick="refreshDownloads()"
+              class="btn-secondary btn-sm">⟳ Refresh Downloads</button>
+      <button onclick="closeReplaceOverlay()" class="btn-icon" style="font-size:1rem">✕</button>
+    </div>
+
+    <!-- Downloads error banner (hidden by default) -->
+    <div id="replace-downloads-error" class="hidden" style="
+         padding:10px 20px;background:rgba(239,68,68,0.1);
+         border-bottom:1px solid var(--red);color:var(--red);font-size:0.82rem;"></div>
+
+    <!-- Table area -->
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;">
+      <div id="replace-table-container">
+        <div style="text-align:center;padding:60px;color:var(--text-muted)">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:14px 20px;border-top:1px solid var(--border);
+                display:flex;align-items:center;gap:12px;flex-shrink:0;">
+      <div id="replace-summary" style="flex:1;font-size:0.82rem;color:var(--text-muted)">—</div>
+      <button id="replace-execute-btn" onclick="executeSwaps()"
+              class="btn-primary" disabled
+              style="background:var(--red);border-color:var(--red);">
+        ⚡ Execute Swaps
+      </button>
+    </div>
+  </div>
+
   <!-- Toast container -->
   <div class="toast" id="toast-container"></div>
 
@@ -330,6 +379,9 @@ const state = {
   activeJobFilter: null,
   logsOffset: 0,
   activeJobs: new Set(),
+  replaceJobId: null,
+  replaceItems: [],
+  replaceRefreshing: false,
 };
 
 // =====================================================================
@@ -2196,6 +2248,207 @@ function startPolling() {
       });
     } catch {}
   }, 5000);
+}
+
+// =====================================================================
+// REPLACE WORKFLOW OVERLAY
+// =====================================================================
+
+function openReplaceOverlay(jobId) {
+  state.replaceJobId = jobId;
+  state.replaceItems = [];
+  document.getElementById('replace-overlay').classList.remove('hidden');
+  refreshDownloads();
+}
+
+function closeReplaceOverlay() {
+  document.getElementById('replace-overlay').classList.add('hidden');
+  state.replaceJobId = null;
+  state.replaceItems = [];
+}
+
+async function refreshDownloads() {
+  if (state.replaceRefreshing) return;
+  state.replaceRefreshing = true;
+
+  const refreshBtn = document.getElementById('replace-refresh-btn');
+  const executeBtn = document.getElementById('replace-execute-btn');
+  refreshBtn.disabled = true;
+  executeBtn.disabled = true;
+  refreshBtn.textContent = '⟳ Refreshing…';
+
+  const errBanner = document.getElementById('replace-downloads-error');
+  errBanner.classList.add('hidden');
+
+  try {
+    const data = await api(`/replace/match?job_id=${state.replaceJobId}`);
+
+    // Merge new match results — preserve existing user decisions (action, userReplacement)
+    const prev = {};
+    state.replaceItems.forEach(item => { prev[item.original] = item; });
+
+    state.replaceItems = data.map(item => {
+      const p = prev[item.original] || {};
+      const isNewMatch = !p.proposed_match && item.proposed_match;
+      return {
+        ...item,
+        action: p.action || (item.proposed_match ? 'confirm' : 'skip'),
+        userReplacement: p.userReplacement || null,
+        isNewMatch,
+      };
+    });
+
+    // Set subtitle from first item's source context
+    if (data.length > 0) {
+      const subtitle = document.getElementById('replace-overlay-subtitle');
+      subtitle.textContent = `${data.length} flagged file(s) · scan job ${state.replaceJobId.slice(0,8)}`;
+    }
+
+    renderReplaceTable();
+  } catch (e) {
+    errBanner.textContent = e.message || 'Failed to load match results';
+    errBanner.classList.remove('hidden');
+    if (e.message && e.message.includes('Downloads folder not accessible')) {
+      errBanner.textContent = 'Downloads folder not accessible — add C:\\Users\\Bluew\\Downloads:/downloads to docker-compose.override.yml and restart';
+    }
+    document.getElementById('replace-table-container').innerHTML =
+      `<div style="text-align:center;padding:60px;color:var(--text-muted)">Failed to load — see error above</div>`;
+  } finally {
+    state.replaceRefreshing = false;
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = '⟳ Refresh Downloads';
+    updateReplaceFooter();
+  }
+}
+
+function renderReplaceTable() {
+  const container = document.getElementById('replace-table-container');
+  if (!state.replaceItems.length) {
+    container.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-muted)">No flagged files found in results.</div>`;
+    return;
+  }
+
+  const rows = state.replaceItems.map((item, idx) => {
+    const fname = item.original.split('/').pop();
+    const flagLabel = item.low_quality ? 'Low quality' : item.webcam ? 'Webcam' : item.bad_audio ? 'Bad audio' : 'Flagged';
+    const reasonsTip = escHtml(item.reasons.join('; '));
+
+    const matchDisplay = item.userReplacement
+      ? `<span style="color:var(--cyan)">${escHtml(item.userReplacement.split('/').pop())}</span> <span style="color:var(--text-muted);font-size:0.72rem">(manual)</span>`
+      : item.proposed_match
+        ? `${escHtml(item.proposed_match.split('/').pop())}${item.ambiguous ? ' <span style="color:var(--amber)" title="Two candidates are very close — please confirm">⚠️</span>' : ''}${item.isNewMatch ? ' <span style="color:var(--green);font-size:0.7rem">NEW</span>' : ''}`
+        : `<span style="color:var(--text-muted);font-style:italic">no match</span>`;
+
+    const scoreDisplay = item.score !== null ? `${item.score}%` : '—';
+    const effectiveReplacement = item.userReplacement || item.proposed_match;
+
+    const actionBtns = `
+      ${effectiveReplacement ? `
+        <button onclick="replaceSetAction(${idx},'confirm')" class="btn-sm ${item.action==='confirm'?'btn-primary':'btn-secondary'}" style="padding:3px 8px">✅ Confirm</button>
+        <button onclick="replacePickDifferent(${idx})" class="btn-sm btn-secondary" style="padding:3px 8px">📁 Pick</button>
+      ` : ''}
+      <button onclick="replaceSetAction(${idx},'nuke')" class="btn-sm ${item.action==='nuke'?'btn-danger':'btn-secondary'}" style="padding:3px 8px">💀 Nuke</button>
+      <button onclick="replaceSetAction(${idx},'skip')" class="btn-sm ${item.action==='skip'?'btn-primary':'btn-secondary'}" style="padding:3px 8px">⏭ Skip</button>
+    `;
+
+    const rowBg = item.action === 'confirm' ? 'rgba(34,197,94,0.05)'
+                : item.action === 'nuke'    ? 'rgba(239,68,68,0.05)'
+                : 'transparent';
+
+    return `
+      <tr style="border-bottom:1px solid var(--border);background:${rowBg}">
+        <td style="padding:10px 12px;font-family:monospace;font-size:0.78rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(item.original)}">${escHtml(fname)}</td>
+        <td style="padding:10px 12px;font-size:0.78rem;" title="${reasonsTip}">${flagLabel}</td>
+        <td style="padding:10px 12px;font-size:0.78rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${matchDisplay}</td>
+        <td style="padding:10px 12px;font-size:0.78rem;color:var(--text-muted)">${scoreDisplay}</td>
+        <td style="padding:10px 12px;white-space:nowrap">${actionBtns}</td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);">
+          <th style="padding:8px 12px;text-align:left;font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Original</th>
+          <th style="padding:8px 12px;text-align:left;font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Why Flagged</th>
+          <th style="padding:8px 12px;text-align:left;font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Proposed Match</th>
+          <th style="padding:8px 12px;text-align:left;font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Score</th>
+          <th style="padding:8px 12px;text-align:left;font-size:0.72rem;color:var(--text-muted);text-transform:uppercase">Action</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  updateReplaceFooter();
+}
+
+function replaceSetAction(idx, action) {
+  state.replaceItems[idx].action = action;
+  renderReplaceTable();
+}
+
+function replacePickDifferent(idx) {
+  openBrowser(null, 'file-select', (selectedPath) => {
+    state.replaceItems[idx].userReplacement = selectedPath;
+    state.replaceItems[idx].action = 'confirm';
+    renderReplaceTable();
+  });
+  // Pre-navigate to /downloads
+  setTimeout(() => browserNavigate('/downloads'), 100);
+}
+
+function updateReplaceFooter() {
+  const confirms = state.replaceItems.filter(i => i.action === 'confirm').length;
+  const nukes    = state.replaceItems.filter(i => i.action === 'nuke').length;
+  const skips    = state.replaceItems.filter(i => i.action === 'skip').length;
+
+  document.getElementById('replace-summary').textContent =
+    `${confirms} swap${confirms !== 1 ? 's' : ''} · ${nukes} nuke${nukes !== 1 ? 's' : ''} · ${skips} skip${skips !== 1 ? 's' : ''}`;
+
+  const executeBtn = document.getElementById('replace-execute-btn');
+  executeBtn.disabled = state.replaceRefreshing || (confirms + nukes) === 0;
+}
+
+async function executeSwaps() {
+  const confirms = state.replaceItems.filter(i => i.action === 'confirm');
+  const nukes    = state.replaceItems.filter(i => i.action === 'nuke');
+
+  if (confirms.length + nukes.length === 0) return;
+
+  // Build confirmation message
+  const deleteList = [
+    ...confirms.map(i => `DELETE: ${i.original.split('/').pop()}`),
+    ...nukes.map(i => `DELETE: ${i.original.split('/').pop()}`),
+  ];
+  const msg = `This will permanently delete ${deleteList.length} file(s):\n\n${deleteList.join('\n')}\n\nContinue?`;
+  if (!confirm(msg)) return;
+
+  const swaps = confirms.map(i => ({
+    original: i.original,
+    replacement: i.userReplacement || i.proposed_match,
+  }));
+  const nukeList = nukes.map(i => i.original);
+
+  const executeBtn = document.getElementById('replace-execute-btn');
+  executeBtn.disabled = true;
+  executeBtn.textContent = '⏳ Executing…';
+
+  try {
+    const result = await api('/replace/execute', 'POST', {
+      job_id: state.replaceJobId,
+      confirmed: true,
+      swaps,
+      nukes: nukeList,
+    });
+    toast(`Replacement job started — job ID: ${result.job_id.slice(0,8)}`, 'success');
+    closeReplaceOverlay();
+    // Refresh jobs list so the new replace_workflow job card appears
+    renderJobs();
+  } catch (e) {
+    toast(`Execute failed: ${e.message}`, 'error');
+    executeBtn.disabled = false;
+    executeBtn.textContent = '⚡ Execute Swaps';
+  }
 }
 
 // =====================================================================
