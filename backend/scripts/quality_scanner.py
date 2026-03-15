@@ -251,7 +251,7 @@ def write_html_report(report_path: Path, results: list[dict], source: Path, min_
 
     rows = []
     # Sort: flagged files first, then alphabetically
-    for r in sorted(results, key=lambda x: (not (x["low_quality"] or x["webcam"] or x["bad_audio"]), x["path"])):
+    for r in sorted(results, key=lambda x: (not (x["low_quality"] or x["webcam"] or x["bad_audio"]), x.get("rel", x["path"]))):
         badges = ""
         if r["low_quality"]:
             badges += badge("LOW QUALITY", "#FFB800") + " "
@@ -277,7 +277,7 @@ def write_html_report(report_path: Path, results: list[dict], source: Path, min_
         rows.append(
             f"  <tr>\n"
             f"    <td style='font-family:monospace;font-size:0.77rem;word-break:break-all'>"
-            f"{html_mod.escape(r['path'])}{reasons_html}</td>\n"
+            f"{html_mod.escape(r.get('rel', r['path']))}{reasons_html}</td>\n"
             f"    <td style='text-align:center'><span style='color:{tier_color};font-weight:700'>{r['tier']}</span></td>\n"
             f"    <td style='text-align:center;font-size:0.8rem'>{bitrate_str}</td>\n"
             f"    <td style='text-align:center;font-size:0.8rem'>{codec_str}</td>\n"
@@ -338,6 +338,33 @@ tr:hover td{{background:rgba(255,255,255,0.02)}}
 </html>""",
         encoding="utf-8",
     )
+
+
+# ---------------------------------------------------------------------------
+# JSON results output
+# ---------------------------------------------------------------------------
+
+def write_results_json(json_path: Path, results: list, source: Path, scan_date: str) -> None:
+    """Write machine-readable flagged-file list alongside the HTML report."""
+    flagged = [
+        {
+            "path":        r["path"],  # absolute path
+            "low_quality": r["low_quality"],
+            "webcam":      r["webcam"],
+            "bad_audio":   r["bad_audio"],
+            "reasons":     r["reasons"],
+            "resolution":  f"{r['info']['width']}x{r['info']['height']}" if r["info"].get("width") and r["info"].get("height") else "",
+            "bitrate_kbps": r["info"].get("bitrate_kbps", 0),
+        }
+        for r in results
+        if r["low_quality"] or r["webcam"] or r["bad_audio"]
+    ]
+    payload = {
+        "scan_date":  scan_date,
+        "source_dir": str(source),
+        "flagged":    flagged,
+    }
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +472,8 @@ def scan(args):
         print(f"{prefix}{level}: {tier_tag}{flags_str} {rel}{reason_str}")
 
         results.append({
-            "path":        str(rel),
+            "path":        str(path),
+            "rel":         str(rel),
             "tier":        tier,
             "low_quality": low_quality,
             "webcam":      webcam,
@@ -474,6 +502,14 @@ def scan(args):
             write_html_report(report_path, results, source, args.min_quality)
             print(f"INFO: Report saved to: {report_path}")
             print(f"REPORT_PATH: {report_path}", flush=True)
+            # Write machine-readable results for the replacement workflow
+            json_path = report_path.with_suffix('.json')
+            try:
+                scan_date = datetime.now().isoformat(timespec='seconds')
+                write_results_json(json_path, results, source, scan_date)
+                print(f"INFO: Results JSON saved to: {json_path}")
+            except OSError as e:
+                print(f"WARN: Could not write results JSON: {e}", file=sys.stderr)
         except IsADirectoryError:
             print(
                 f"ERROR: Could not save the report — '{report_path}' is a folder, not a file.\n"
