@@ -105,7 +105,7 @@ async def get_match(job_id: str):
         for cand, norm_cand in normalized_candidates:
             score = fuzz.token_sort_ratio(norm_original, norm_cand)
             if score >= 72:
-                scored.append((score, str(cand)))
+                scored.append((int(round(score)), str(cand)))
 
         scored.sort(key=lambda x: x[0], reverse=True)
 

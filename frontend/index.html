@@ -2292,7 +2292,7 @@ async function refreshDownloads() {
       const isNewMatch = !p.proposed_match && item.proposed_match;
       return {
         ...item,
-        action: p.action || (item.proposed_match ? 'confirm' : 'skip'),
+        action: p.action || (item.proposed_match && !item.ambiguous ? 'confirm' : 'skip'),
         userReplacement: p.userReplacement || null,
         isNewMatch,
       };
