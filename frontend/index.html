@@ -2139,7 +2139,7 @@ function browserSelectFolder() {
     } else {
       toast('Source already added', 'info');
     }
-  } else if (state.browserCallback) {
+  } else if (state.browserMode === 'file-select' && state.browserCallback) {
     state.browserCallback(state.browserPath);
   } else if (state.browserTarget) {
     const input = document.getElementById(state.browserTarget);
@@ -2152,6 +2152,8 @@ function browserSelectFolder() {
 function browserPickFile(path) {
   if (state.browserCallback) {
     state.browserCallback(path);
+  } else {
+    console.warn('browserPickFile called with no callback set');
   }
   closeBrowser();
 }
