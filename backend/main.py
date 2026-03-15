@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 from db import init_db, cleanup_old_logs, get_setting, interrupt_stale_jobs
-from routers import filesystem, jobs, logs
+from routers import filesystem, jobs, logs, replace
 
 
 async def scheduled_cleanup():
@@ -62,3 +62,4 @@ app.add_middleware(
 app.include_router(filesystem.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
+app.include_router(replace.router, prefix="/api")
