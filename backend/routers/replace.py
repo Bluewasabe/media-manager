@@ -89,12 +89,13 @@ async def get_match(job_id: str):
 
     response = []
     for item in data.get("flagged", []):
+        base = {**item, "original": item["path"]}
         norm_original = normalize_title(Path(item["path"]).name)
 
         # Skip titles too short to match reliably (< 4 non-space chars)
         if len(norm_original.replace(" ", "")) < 4:
             response.append({
-                **item,
+                **base,
                 "proposed_match": None, "score": None,
                 "ambiguous": False,
                 "alternate_match": None, "alternate_score": None,
@@ -111,21 +112,21 @@ async def get_match(job_id: str):
 
         if not scored:
             response.append({
-                **item,
+                **base,
                 "proposed_match": None, "score": None,
                 "ambiguous": False,
                 "alternate_match": None, "alternate_score": None,
             })
         elif len(scored) >= 2 and (scored[0][0] - scored[1][0]) <= 5:
             response.append({
-                **item,
+                **base,
                 "proposed_match": scored[0][1], "score": scored[0][0],
                 "ambiguous": True,
                 "alternate_match": scored[1][1], "alternate_score": scored[1][0],
             })
         else:
             response.append({
-                **item,
+                **base,
                 "proposed_match": scored[0][1], "score": scored[0][0],
                 "ambiguous": False,
                 "alternate_match": None, "alternate_score": None,
