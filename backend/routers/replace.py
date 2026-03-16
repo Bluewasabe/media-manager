@@ -80,11 +80,15 @@ async def get_match(job_id: str):
             "Downloads folder not accessible — check docker-compose.override.yml"
         )
 
-    # Top-level scan only, video files only
-    candidates = [
-        f for f in DOWNLOADS_PATH.iterdir()
-        if f.is_file() and f.suffix.lower() in VIDEO_EXTS
-    ]
+    # Top-level files + one level deep inside subdirectories, video files only
+    candidates = []
+    for entry in DOWNLOADS_PATH.iterdir():
+        if entry.is_file() and entry.suffix.lower() in VIDEO_EXTS:
+            candidates.append(entry)
+        elif entry.is_dir():
+            for sub in entry.iterdir():
+                if sub.is_file() and sub.suffix.lower() in VIDEO_EXTS:
+                    candidates.append(sub)
     normalized_candidates = [(c, normalize_title(c.name)) for c in candidates]
 
     response = []
