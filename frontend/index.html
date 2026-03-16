@@ -1542,8 +1542,14 @@ function historyJobRow(job) {
             ? `${(stats.low_quality || 0) > 0 ? `<span style="color:var(--amber)">${stats.low_quality} low-q</span>` : ''}
                ${(stats.webcam || 0) > 0 ? `<span style="color:var(--red)">${stats.webcam} webcam</span>` : ''}
                ${(stats.bad_audio || 0) > 0 ? `<span style="color:var(--purple)">${stats.bad_audio} bad-audio</span>` : ''}`
-            : `${stats.moved > 0 ? `<span style="color:var(--green)">${stats.moved} moved</span>` : ''}
-               ${stats.errors > 0 ? `<span style="color:var(--red)">${stats.errors} err</span>` : ''}`}
+            : job.script === 'replace_workflow'
+              ? `${stats.phase === 'running' && stats.current_file ? `<span style="color:var(--text-muted);font-size:0.7rem">${escHtml(stats.current_file)}</span>` : ''}
+                 ${(stats.moved || 0) > 0 ? `<span style="color:var(--green)">${stats.moved} swapped</span>` : ''}
+                 ${(stats.deleted || 0) > 0 ? `<span style="color:var(--red)">${stats.deleted} nuked</span>` : ''}
+                 ${(stats.skipped || 0) > 0 ? `<span style="color:var(--text-muted)">${stats.skipped} skipped</span>` : ''}
+                 ${(stats.errors || 0) > 0 ? `<span style="color:var(--red)">${stats.errors} err</span>` : ''}`
+              : `${stats.moved > 0 ? `<span style="color:var(--green)">${stats.moved} moved</span>` : ''}
+                 ${stats.errors > 0 ? `<span style="color:var(--red)">${stats.errors} err</span>` : ''}`}
         </div>
         ${statusPill(job.status)}
         ${stats.report_path ? `<a href="/api/file?path=${encodeURIComponent(stats.report_path)}" target="_blank" class="btn-icon btn-sm" style="color:var(--cyan);text-decoration:none;">📄 Report</a>` : ''}

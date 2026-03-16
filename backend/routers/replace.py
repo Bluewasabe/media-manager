@@ -208,27 +208,54 @@ async def _execute_replace_task(
     nukes: list[str],
 ) -> None:
     moved = deleted = skipped = errors = 0
+    total = len(swaps) + len(nukes)
+    done = 0
+    # Track replacement paths already consumed in this batch (duplicate match detection)
+    used_replacements: set[str] = set()
 
     async def log(level: str, msg: str) -> None:
         await add_log(job_id, datetime.utcnow().isoformat(), level, msg)
 
+    async def push_stats(phase: str = "running", current: str = "") -> None:
+        await update_job_stats(job_id, {
+            "phase": phase,
+            "current_file": current,
+            "total": total,
+            "done": done,
+            "moved": moved,
+            "deleted": deleted,
+            "skipped": skipped,
+            "errors": errors,
+        })
+
     try:
+        await push_stats("running")
+
         for swap in swaps:
             orig = Path(swap.original)
             repl = Path(swap.replacement)
             dest = orig.parent / repl.name
+            await push_stats("running", orig.name)
 
             if not orig.exists():
                 await log("WARN", f"Original not found, skipping: {orig}")
                 skipped += 1
+                done += 1
+                continue
+            if str(repl) in used_replacements:
+                await log("WARN", f"Replacement already used for another file in this batch, skipping duplicate: {repl}")
+                skipped += 1
+                done += 1
                 continue
             if not repl.exists():
-                await log("ERROR", f"Replacement gone from Downloads, skipping: {repl}")
+                await log("WARN", f"Replacement no longer in Downloads, skipping: {repl}")
                 skipped += 1
+                done += 1
                 continue
             if dest.exists():
-                await log("ERROR", f"Destination exists (no overwrite), skipping: {dest}")
+                await log("WARN", f"Destination already exists (no overwrite), skipping: {dest}")
                 skipped += 1
+                done += 1
                 continue
 
             try:
@@ -236,8 +263,10 @@ async def _execute_replace_task(
             except Exception as e:
                 await log("ERROR", f"Failed to move {repl} → {dest}: {e}")
                 errors += 1
+                done += 1
                 continue
-            # Move succeeded — log and delete original
+
+            used_replacements.add(str(repl))
             await log("INFO", f"Moved {repl} → {dest}")
             try:
                 orig.unlink()
@@ -246,12 +275,16 @@ async def _execute_replace_task(
             except Exception as e:
                 await log("ERROR", f"Move succeeded but could not delete original {orig}: {e} — two copies may exist")
                 errors += 1
+            done += 1
 
         for nuke_path in nukes:
             nuke = Path(nuke_path)
+            await push_stats("running", nuke.name)
+
             if not nuke.exists():
                 await log("WARN", f"Nuke target not found, skipping: {nuke}")
                 skipped += 1
+                done += 1
                 continue
             try:
                 nuke.unlink()
@@ -260,14 +293,13 @@ async def _execute_replace_task(
             except Exception as e:
                 await log("ERROR", f"Failed to delete {nuke}: {e}")
                 errors += 1
+            done += 1
 
-        await update_job_stats(job_id, {
-            "moved": moved, "deleted": deleted,
-            "skipped": skipped, "errors": errors,
-        })
-        status = "completed" if (moved + deleted > 0 or errors == 0) else "failed"
+        await push_stats("complete")
+        status = "completed" if errors == 0 else "failed"
         await update_job_status(job_id, status, exit_code=0 if status == "completed" else 1)
 
     except Exception as e:
         await log("ERROR", f"Unexpected error in replace task: {e}")
+        await push_stats("failed")
         await update_job_status(job_id, "failed", exit_code=1)
