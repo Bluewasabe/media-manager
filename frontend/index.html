@@ -2330,7 +2330,17 @@ function renderReplaceTable() {
     return;
   }
 
-  const rows = state.replaceItems.map((item, idx) => {
+  const sorted = [...state.replaceItems].sort((a, b) => {
+    const aMatch = !!(a.userReplacement || a.proposed_match);
+    const bMatch = !!(b.userReplacement || b.proposed_match);
+    return bMatch - aMatch;
+  });
+  // Build a map from original path to current index for action callbacks
+  const idxMap = {};
+  state.replaceItems.forEach((item, i) => { idxMap[item.original] = i; });
+
+  const rows = sorted.map((item) => {
+    const idx = idxMap[item.original];
     const fname = item.original.split('/').pop();
     const flagLabel = item.low_quality ? 'Low quality' : item.webcam ? 'Webcam' : item.bad_audio ? 'Bad audio' : 'Flagged';
     const reasonsTip = escHtml((item.reasons || []).join('; '));
@@ -2346,11 +2356,11 @@ function renderReplaceTable() {
 
     const actionBtns = `
       ${effectiveReplacement ? `
-        <button onclick="replaceSetAction(${idx},'confirm')" class="btn-sm ${item.action==='confirm'?'btn-primary':'btn-secondary'}" style="padding:3px 8px">✅ Confirm</button>
-        <button onclick="replacePickDifferent(${idx})" class="btn-sm btn-secondary" style="padding:3px 8px">📁 Pick</button>
+        <button onclick="replaceSetAction(${idx},'confirm')" class="btn-sm ${item.action==='confirm'?'btn-primary':'btn-secondary'}" style="padding:3px 8px" title="Move the replacement into the original's folder, then delete the original">✅ Confirm swap</button>
+        <button onclick="replacePickDifferent(${idx})" class="btn-sm btn-secondary" style="padding:3px 8px" title="Choose a different replacement file from Downloads">📁 Pick different</button>
       ` : ''}
-      <button onclick="replaceSetAction(${idx},'nuke')" class="btn-sm ${item.action==='nuke'?'btn-danger':'btn-secondary'}" style="padding:3px 8px">💀 Nuke</button>
-      <button onclick="replaceSetAction(${idx},'skip')" class="btn-sm ${item.action==='skip'?'btn-primary':'btn-secondary'}" style="padding:3px 8px">⏭ Skip</button>
+      <button onclick="replaceSetAction(${idx},'nuke')" class="btn-sm ${item.action==='nuke'?'btn-danger':'btn-secondary'}" style="padding:3px 8px" title="Permanently delete this file — no replacement">💀 Nuke</button>
+      <button onclick="replaceSetAction(${idx},'skip')" class="btn-sm ${item.action==='skip'?'btn-primary':'btn-secondary'}" style="padding:3px 8px" title="Leave this file untouched">⏭ Skip</button>
     `;
 
     const rowBg = item.action === 'confirm' ? 'rgba(34,197,94,0.05)'
