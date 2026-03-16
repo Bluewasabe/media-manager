@@ -2299,6 +2299,13 @@ async function refreshDownloads() {
       };
     });
 
+    // Sort in place: matched files first, unmatched after
+    state.replaceItems.sort((a, b) => {
+      const aMatch = !!(a.userReplacement || a.proposed_match);
+      const bMatch = !!(b.userReplacement || b.proposed_match);
+      return bMatch - aMatch;
+    });
+
     // Set subtitle from first item's source context
     if (data.length > 0) {
       const subtitle = document.getElementById('replace-overlay-subtitle');
@@ -2330,17 +2337,7 @@ function renderReplaceTable() {
     return;
   }
 
-  const sorted = [...state.replaceItems].sort((a, b) => {
-    const aMatch = !!(a.userReplacement || a.proposed_match);
-    const bMatch = !!(b.userReplacement || b.proposed_match);
-    return bMatch - aMatch;
-  });
-  // Build a map from original path to current index for action callbacks
-  const idxMap = {};
-  state.replaceItems.forEach((item, i) => { idxMap[item.original] = i; });
-
-  const rows = sorted.map((item) => {
-    const idx = idxMap[item.original];
+  const rows = state.replaceItems.map((item, idx) => {
     const fname = item.original.split('/').pop();
     const flagLabel = item.low_quality ? 'Low quality' : item.webcam ? 'Webcam' : item.bad_audio ? 'Bad audio' : 'Flagged';
     const reasonsTip = escHtml((item.reasons || []).join('; '));
