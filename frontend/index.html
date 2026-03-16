@@ -1547,6 +1547,7 @@ function historyJobRow(job) {
         </div>
         ${statusPill(job.status)}
         ${stats.report_path ? `<a href="/api/file?path=${encodeURIComponent(stats.report_path)}" target="_blank" class="btn-icon btn-sm" style="color:var(--cyan);text-decoration:none;">📄 Report</a>` : ''}
+        ${job.script === 'quality_scanner' && ((stats.low_quality||0)+(stats.webcam||0)+(stats.bad_audio||0)) > 0 ? `<button class="btn-secondary btn-sm" onclick="openReplaceOverlay('${job.id}')">🔄 Review</button>` : ''}
         ${['failed', 'cancelled', 'interrupted'].includes(job.status) ? `<button class="btn-secondary btn-sm" onclick="rerunJob('${job.id}', '${job.script}')">Re-run</button>` : ''}
         <button class="btn-icon btn-sm" onclick="toggleHistoryLogs('${job.id}')">View Logs</button>
       </div>
