@@ -89,19 +89,27 @@ def extract_year(name: str):
     return None, -1
 
 
+def _cap_token(w: str) -> str:
+    """Capitalize one token, handling hyphens and preserving all-caps acronyms."""
+    if "-" in w:
+        return "-".join(_cap_token(part) for part in w.split("-"))
+    # Preserve all-caps alphabetic tokens that are Roman numerals or short acronyms
+    # (II, III, SG, US, TV, UK, etc.)
+    if w == w.upper() and w.isalpha() and (is_roman_numeral(w) or len(w) <= 4):
+        return w.upper()
+    return w.capitalize()
+
+
 def title_case_smart(name: str) -> str:
-    """Title-case but keep small words lowercase and preserve Roman numerals."""
+    """Title-case but keep small words lowercase and preserve Roman numerals / acronyms."""
     small = {"a", "an", "and", "as", "at", "but", "by", "for", "from",
              "in", "into", "nor", "of", "on", "or", "so", "the", "to",
              "up", "via", "with", "yet"}
     words = name.split()
     result = []
     for i, w in enumerate(words):
-        # Preserve all-caps Roman numerals (II, III, IV, XIV…)
-        if w == w.upper() and w.isalpha() and is_roman_numeral(w):
-            result.append(w.upper())
-        elif i == 0 or i == len(words) - 1 or w.lower() not in small:
-            result.append(w.capitalize())
+        if i == 0 or i == len(words) - 1 or w.lower() not in small:
+            result.append(_cap_token(w))
         else:
             result.append(w.lower())
     return " ".join(result)
@@ -193,6 +201,16 @@ def parse_tv_filename(stem: str):
             year_val, year_idx2 = extract_year(show_part)
             if year_idx2 >= 0:
                 show_part = show_part[:year_idx2].strip()
+                # Remove orphan opening bracket/paren left behind by "(YYYY)" pattern
+                show_part = re.sub(r"[\(\[\{,\-\s]+$", "", show_part).strip()
+
+            # Strip episode-title fragments that appear before SxxExx tags:
+            #   "Band of Brothers Part 1 Currahee S01E01" → "Band of Brothers"
+            #   "The Pacific Episode 01 S01E01"           → "The Pacific"
+            #   "Star Wars Rebels S01D01 Extras 01 …"     → "Star Wars Rebels"
+            show_part = re.sub(r"\s+Part\s+\d+\b.*$",    "", show_part, flags=re.IGNORECASE).strip()
+            show_part = re.sub(r"\s+Episode\s+\d+\b.*$", "", show_part, flags=re.IGNORECASE).strip()
+            show_part = re.sub(r"\s+[Ss]\d+[Dd]\d+\b.*$", "", show_part).strip()
 
             show_part = title_case_smart(show_part) if show_part else None
             return show_part, season, episode
@@ -244,8 +262,11 @@ def remove_empty_folders(root: Path) -> list[Path]:
     # Deepest folders first — len(parts) is the reliable depth measure
     for folder in sorted(all_dirs, key=lambda p: len(p.parts), reverse=True):
         if not any(folder.iterdir()):  # truly empty (no files, no subdirs left)
-            folder.rmdir()
-            removed.append(folder)
+            try:
+                folder.rmdir()
+                removed.append(folder)
+            except PermissionError:
+                pass  # skip read-only or locked folders
     return removed
 
 
@@ -387,14 +408,24 @@ def plan_tv_changes(root: Path):
         if item.suffix.lower() not in VIDEO_EXTENSIONS:
             continue
 
+        # Skip bonus/featurette content that lives in dedicated subfolders
+        if any(part.lower() == "featurettes" for part in item.parts):
+            continue
+
         stem = item.stem
         ext  = item.suffix.lower()
 
         show, season, episode = parse_tv_filename(stem)
 
         if not show:
-            warnings.append(f"  [WARN] No show name detected: {item.relative_to(root)}")
-            continue
+            # Fallback: infer show name from the first subfolder under root.
+            # Handles filenames that begin with the episode tag (e.g. "S00E09 - Title.mkv")
+            rel_parts = item.relative_to(root).parts
+            if len(rel_parts) >= 2:
+                show, _ = clean_movie_name(rel_parts[0])
+            if not show:
+                warnings.append(f"  [WARN] No show name detected: {item.relative_to(root)}")
+                continue
 
         # Try to infer show name from parent folder if filename parse was weak
         # e.g. if file is inside "Breaking Bad/Season 1/"
@@ -518,6 +549,11 @@ Examples:
 
 
 if __name__ == "__main__":
+    # Ensure UTF-8 output on Windows terminals (handles Unicode characters in filenames)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     import signal
     def _handle_sigterm(signum, frame):
         print("\n[INTERRUPTED] Shutdown signal received — stopping cleanly. "

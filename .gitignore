@@ -8,3 +8,8 @@ docker-compose.override.yml
 dist/
 .venv/
 node_modules/
+
+# local data and screenshots
+data/
+image.png
+Bug Tracker/
